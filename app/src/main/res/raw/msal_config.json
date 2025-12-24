@@ -1,6 +1,6 @@
 {
-  "client_id": "",
-  "authorization_user_agent": "DEFAULT",
+  "client_id": "PLACEHOLDER",
+  "authorization_user_agent": "WEBVIEW",
   "redirect_uri": "msauth://no.solver.app/auth",
   "account_mode": "MULTIPLE",
   "broker_redirect_uri_registered": false,
@@ -9,7 +9,12 @@
       "type": "AAD",
       "audience": {
         "type": "AzureADandPersonalMicrosoftAccount"
-      }
+      },
+      "default": true
     }
-  ]
+  ],
+  "logging": {
+    "pii_enabled": false,
+    "log_level": "WARNING"
+  }
 }
