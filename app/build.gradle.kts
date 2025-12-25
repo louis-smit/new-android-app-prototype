@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-    namespace = "no.solver.app"
+    namespace = "no.solver.solverapp"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "no.solver.app"
+        applicationId = "no.solver.solverapp"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -20,22 +20,24 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // MS Client IDs - loaded at runtime from gradle.properties or local.properties
-        buildConfigField("String", "SOLVER_MS_CLIENT_ID", "\"${project.findProperty("SOLVER_MS_CLIENT_ID") ?: ""}\"")
-        buildConfigField("String", "ZOHM_MS_CLIENT_ID", "\"${project.findProperty("ZOHM_MS_CLIENT_ID") ?: ""}\"")
+        // MS Client IDs - same as iOS Config.xcconfig
+        buildConfigField("String", "SOLVER_MS_CLIENT_ID", "\"c31d3ea5-b6fa-4543-ac2d-e110bdf4a6e5\"")
+        buildConfigField("String", "ZOHM_MS_CLIENT_ID", "\"ecc111e6-e21d-4a2f-85f3-1db37956f3df\"")
     }
 
     buildTypes {
         debug {
             isDebuggable = true
-            applicationIdSuffix = ".debug"
+            // No suffix - use base applicationId for MSAL redirect URI matching
+            // applicationIdSuffix = ".debug"
             buildConfigField("Boolean", "DEBUG_MODE", "true")
             buildConfigField("Boolean", "IS_PRODUCTION", "false")
         }
         
         create("staging") {
             initWith(getByName("debug"))
-            applicationIdSuffix = ".staging"
+            // No suffix - use base applicationId for MSAL redirect URI matching
+            // applicationIdSuffix = ".staging"
             buildConfigField("Boolean", "DEBUG_MODE", "true")
             buildConfigField("Boolean", "IS_PRODUCTION", "false")
         }
@@ -69,6 +71,12 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
         }
     }
 }
@@ -109,10 +117,16 @@ dependencies {
 
     // Testing
     testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.turbine)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.mockk.android)
+    androidTestImplementation(libs.hilt.testing)
+    kspAndroidTest(libs.hilt.android.compiler)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
