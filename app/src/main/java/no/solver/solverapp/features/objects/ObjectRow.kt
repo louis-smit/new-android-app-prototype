@@ -24,14 +24,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import no.solver.solverapp.R
-import no.solver.solverapp.data.models.ObjectStatusColor
 import no.solver.solverapp.data.models.OnlineState
 import no.solver.solverapp.data.models.SolverObject
+import no.solver.solverapp.ui.components.ObjectIcon
 import no.solver.solverapp.ui.theme.SolverAppTheme
 
 @Composable
 fun ObjectRow(
     solverObject: SolverObject,
+    baseUrl: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -45,7 +46,8 @@ fun ObjectRow(
         ) {
             ObjectIcon(
                 objectTypeId = solverObject.objectTypeId,
-                modifier = Modifier.size(32.dp)
+                baseUrl = baseUrl,
+                size = 32.dp
             )
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -103,19 +105,6 @@ fun ObjectRow(
 }
 
 @Composable
-private fun ObjectIcon(
-    objectTypeId: Int,
-    modifier: Modifier = Modifier
-) {
-    Icon(
-        painter = painterResource(id = R.drawable.ic_cube),
-        contentDescription = null,
-        modifier = modifier,
-        tint = MaterialTheme.colorScheme.primary
-    )
-}
-
-@Composable
 private fun OnlineIndicator(
     onlineState: OnlineState,
     modifier: Modifier = Modifier
@@ -155,6 +144,7 @@ private fun ObjectRowPreview() {
                 online = true,
                 state = 1
             ),
+            baseUrl = "https://api365-demo.solver.no",
             onClick = {}
         )
     }
@@ -174,6 +164,7 @@ private fun ObjectRowOfflinePreview() {
                 online = false,
                 state = 2
             ),
+            baseUrl = "https://api365-demo.solver.no",
             onClick = {}
         )
     }

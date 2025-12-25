@@ -28,6 +28,9 @@ securityCrypto = "1.1.0-alpha06"
 # Microsoft Auth
 msal = "5.4.0"
 
+# Image Loading
+coil = "2.7.0"
+
 # Testing
 mockk = "1.13.13"
 coroutinesTest = "1.9.0"
@@ -70,6 +73,9 @@ security-crypto = { group = "androidx.security", name = "security-crypto", versi
 
 # Microsoft Auth
 msal = { group = "com.microsoft.identity.client", name = "msal", version.ref = "msal" }
+
+# Image Loading
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 
 # Testing
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }

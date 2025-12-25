@@ -45,6 +45,7 @@ fun ObjectsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val filteredObjects by viewModel.filteredObjects.collectAsState()
+    val apiBaseUrl by viewModel.apiBaseUrl.collectAsState()
 
     Scaffold(
         topBar = {
@@ -67,6 +68,7 @@ fun ObjectsScreen(
                 is ObjectsUiState.Success -> {
                     ObjectsList(
                         objects = filteredObjects,
+                        baseUrl = apiBaseUrl,
                         onObjectClick = onObjectClick
                     )
                 }
@@ -87,6 +89,7 @@ fun ObjectsScreen(
 @Composable
 private fun ObjectsList(
     objects: List<SolverObject>,
+    baseUrl: String,
     onObjectClick: (SolverObject) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -99,6 +102,7 @@ private fun ObjectsList(
         ) { obj ->
             ObjectRow(
                 solverObject = obj,
+                baseUrl = baseUrl,
                 onClick = { onObjectClick(obj) }
             )
         }

@@ -13,9 +13,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import no.solver.solverapp.core.config.APIConfiguration
 import no.solver.solverapp.core.network.ApiResult
 import no.solver.solverapp.data.models.SolverObject
 import no.solver.solverapp.data.repositories.ObjectsRepository
+import no.solver.solverapp.features.auth.services.SessionManager
 import javax.inject.Inject
 
 sealed class ObjectsUiState {
@@ -28,13 +30,37 @@ sealed class ObjectsUiState {
 @OptIn(FlowPreview::class)
 @HiltViewModel
 class ObjectsViewModel @Inject constructor(
-    private val objectsRepository: ObjectsRepository
+    private val objectsRepository: ObjectsRepository,
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     companion object {
         private const val TAG = "ObjectsViewModel"
         private const val SEARCH_DEBOUNCE_MS = 150L
     }
+
+    val apiBaseUrl: StateFlow<String> = sessionManager.currentSessionFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = null
+        )
+        .let { sessionFlow ->
+            combine(sessionFlow, MutableStateFlow(Unit)) { session, _ ->
+                if (session != null) {
+                    APIConfiguration.current(
+                        environment = session.environment,
+                        provider = session.provider
+                    ).baseURL
+                } else {
+                    "https://api365-demo.solver.no" // Fallback
+                }
+            }.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = "https://api365-demo.solver.no"
+            )
+        }
 
     private val _uiState = MutableStateFlow<ObjectsUiState>(ObjectsUiState.Loading)
     val uiState: StateFlow<ObjectsUiState> = _uiState.asStateFlow()

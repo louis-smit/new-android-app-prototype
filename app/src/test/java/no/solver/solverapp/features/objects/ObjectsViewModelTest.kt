@@ -1,14 +1,21 @@
 package no.solver.solverapp.features.objects
 
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import no.solver.solverapp.MainDispatcherRule
+import no.solver.solverapp.core.config.AuthEnvironment
+import no.solver.solverapp.core.config.AuthProvider
 import no.solver.solverapp.core.network.ApiException
 import no.solver.solverapp.core.network.ApiResult
 import no.solver.solverapp.data.models.SolverObject
 import no.solver.solverapp.data.repositories.ObjectsRepository
+import no.solver.solverapp.features.auth.models.AuthTokens
+import no.solver.solverapp.features.auth.models.Session
+import no.solver.solverapp.features.auth.services.SessionManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -22,10 +29,25 @@ class ObjectsViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private lateinit var objectsRepository: ObjectsRepository
+    private lateinit var sessionManager: SessionManager
+
+    private val testSession = Session(
+        id = "test-session",
+        provider = AuthProvider.MICROSOFT,
+        environment = AuthEnvironment.SOLVER,
+        tokens = AuthTokens(
+            accessToken = "test-token",
+            refreshToken = null,
+            expiresAtMillis = System.currentTimeMillis() + 3600_000
+        ),
+        isActive = true
+    )
 
     @Before
     fun setup() {
         objectsRepository = mockk(relaxed = true)
+        sessionManager = mockk(relaxed = true)
+        every { sessionManager.currentSessionFlow } returns flowOf(testSession)
     }
 
     @Test
@@ -36,7 +58,7 @@ class ObjectsViewModelTest {
         )
         coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(objects)
 
-        val viewModel = ObjectsViewModel(objectsRepository)
+        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
 
         val state = viewModel.uiState.value
         assertTrue("Expected Success state but got $state", state is ObjectsUiState.Success)
@@ -47,7 +69,7 @@ class ObjectsViewModelTest {
     fun `shows Empty state when no objects returned`() = runTest {
         coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(emptyList())
 
-        val viewModel = ObjectsViewModel(objectsRepository)
+        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
 
         assertEquals(ObjectsUiState.Empty, viewModel.uiState.value)
     }
@@ -58,7 +80,7 @@ class ObjectsViewModelTest {
             ApiException.Network("Network error")
         )
 
-        val viewModel = ObjectsViewModel(objectsRepository)
+        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
 
         val state = viewModel.uiState.value
         assertTrue(state is ObjectsUiState.Error)
@@ -75,7 +97,7 @@ class ObjectsViewModelTest {
         )
         coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(objects)
 
-        val viewModel = ObjectsViewModel(objectsRepository)
+        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
 
         val stats = viewModel.statistics
         assertEquals(4, stats.total)
@@ -92,7 +114,7 @@ class ObjectsViewModelTest {
             ApiException.Network("Error")
         )
 
-        val viewModel = ObjectsViewModel(objectsRepository)
+        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
         assertTrue(viewModel.uiState.value is ObjectsUiState.Error)
 
         coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(
@@ -110,7 +132,7 @@ class ObjectsViewModelTest {
             listOf(createTestObject(1, "Initial"))
         )
 
-        val viewModel = ObjectsViewModel(objectsRepository)
+        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
         
         val initialState = viewModel.uiState.value as ObjectsUiState.Success
         assertEquals(1, initialState.objects.size)
@@ -132,7 +154,7 @@ class ObjectsViewModelTest {
     fun `setSearchQuery updates query state`() = runTest {
         coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(emptyList())
 
-        val viewModel = ObjectsViewModel(objectsRepository)
+        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
         
         assertEquals("", viewModel.searchQuery.value)
         

@@ -115,6 +115,9 @@ dependencies {
     // Microsoft Auth
     implementation(libs.msal)
 
+    // Image Loading
+    implementation(libs.coil.compose)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
