@@ -36,6 +36,7 @@ import no.solver.solverapp.data.models.SolverObject
 import no.solver.solverapp.features.auth.LoginScreen
 import no.solver.solverapp.features.auth.LoginViewModel
 import no.solver.solverapp.features.objects.ObjectsScreen
+import no.solver.solverapp.features.objects.detail.ObjectDetailScreen
 
 private const val SPLASH_DELAY_MS = 500L
 private const val TRANSITION_DURATION_MS = 300
@@ -113,9 +114,35 @@ fun AppNavHost(
             )
         }
 
-        composable<NavRoute.ObjectDetail> { backStackEntry ->
-            val route = backStackEntry.toRoute<NavRoute.ObjectDetail>()
-            PlaceholderScreen(title = "Object ${route.objectId}")
+        composable<NavRoute.ObjectDetail>(
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            exitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            popEnterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            }
+        ) {
+            ObjectDetailScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }
