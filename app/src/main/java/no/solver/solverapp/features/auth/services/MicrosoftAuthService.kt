@@ -67,12 +67,16 @@ class MicrosoftAuthService @Inject constructor(
 
     suspend fun signIn(activity: Activity): AuthTokens {
         val app = msalApp ?: throw IllegalStateException("MSAL not initialized. Call initialize() first.")
-        val config = AuthConfiguration.current(currentEnvironment)
+        
+        // Use ONLY the API scope - OIDC scopes (openid, profile, etc.) cause "scopes declined" error
+        val apiScope = currentEnvironment.apiScope
+        val scopes = listOf(apiScope)
+        Log.d(TAG, "🔧 Attempting sign-in with scopes: $scopes")
 
         return suspendCancellableCoroutine { continuation ->
             val params = AcquireTokenParameters.Builder()
                 .startAuthorizationFromActivity(activity)
-                .withScopes(config.scopes)
+                .withScopes(scopes)
                 .withCallback(object : AuthenticationCallback {
                     override fun onSuccess(authenticationResult: IAuthenticationResult) {
                         Log.d(TAG, "Sign in successful")
@@ -82,7 +86,8 @@ class MicrosoftAuthService @Inject constructor(
                     }
 
                     override fun onError(exception: MsalException) {
-                        Log.e(TAG, "Sign in failed", exception)
+                        Log.e(TAG, "Sign in failed: ${exception.errorCode} - ${exception.message}", exception)
+                        Log.e(TAG, "Exception type: ${exception.javaClass.simpleName}")
                         continuation.resumeWithException(exception)
                     }
 

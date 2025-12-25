@@ -96,12 +96,14 @@ data class AuthConfiguration(
 ) {
     companion object {
         fun current(environment: AuthEnvironment): AuthConfiguration {
-            val baseScopes = listOf("openid", "profile", "email", "offline_access")
-            val apiScope = environment.apiScope
+            // Note: Android MSAL rejects OIDC scopes (openid, profile, email, offline_access)
+            // combined with custom API scopes. Use only the API scope for token acquisition.
+            // MSAL automatically includes OIDC scopes when needed.
+            val scopes = listOf(environment.apiScope)
 
             return AuthConfiguration(
                 clientID = environment.clientID,
-                scopes = baseScopes + apiScope,
+                scopes = scopes,
                 redirectURI = "msauth://no.solver.solverapp/ga0RGNYHvNM5d0SLGQfpQWAPGJ8%3D",
                 authorityURL = "https://login.microsoftonline.com/common"
             )
