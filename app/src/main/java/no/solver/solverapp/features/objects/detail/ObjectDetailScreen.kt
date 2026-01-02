@@ -15,8 +15,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,13 +28,21 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import no.solver.solverapp.R
 import no.solver.solverapp.data.models.Command
+import no.solver.solverapp.data.models.ContextItem
+import no.solver.solverapp.data.models.ExecuteResponse
 import no.solver.solverapp.data.models.OnlineState
 import no.solver.solverapp.data.models.SolverObject
 import no.solver.solverapp.ui.components.ObjectIcon
@@ -56,6 +69,26 @@ fun ObjectDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val apiBaseUrl by viewModel.apiBaseUrl.collectAsState()
+    val executingCommandId by viewModel.executingCommandId.collectAsState()
+    val showExecuteResponse by viewModel.showExecuteResponse.collectAsState()
+    val lastExecuteResponse by viewModel.lastExecuteResponse.collectAsState()
+    val middlewareMessage by viewModel.middlewareMessage.collectAsState()
+    val commandError by viewModel.commandError.collectAsState()
+    val showInputDialog by viewModel.showInputDialog.collectAsState()
+    val pendingCommand by viewModel.pendingCommand.collectAsState()
+    val commandInput by viewModel.commandInput.collectAsState()
+    val showStatusSheet by viewModel.showStatusSheet.collectAsState()
+    val statusSheetResponse by viewModel.statusSheetResponse.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Show error as snackbar
+    LaunchedEffect(commandError) {
+        commandError?.let { error ->
+            snackbarHostState.showSnackbar(error)
+            viewModel.dismissCommandError()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -82,7 +115,8 @@ fun ObjectDetailScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         PullToRefreshBox(
             isRefreshing = isRefreshing,
@@ -99,8 +133,9 @@ fun ObjectDetailScreen(
                     ObjectDetailContent(
                         solverObject = state.solverObject,
                         baseUrl = apiBaseUrl,
+                        executingCommandId = executingCommandId,
                         onCommandClick = { command ->
-                            // TODO: Handle command execution in next step
+                            viewModel.handleCommand(command)
                         }
                     )
                 }
@@ -113,12 +148,47 @@ fun ObjectDetailScreen(
             }
         }
     }
+
+    // Input Dialog
+    if (showInputDialog && pendingCommand != null) {
+        CommandInputDialog(
+            command = pendingCommand!!,
+            input = commandInput,
+            onInputChange = { viewModel.updateCommandInput(it) },
+            onDismiss = { viewModel.dismissInputDialog() },
+            onConfirm = { viewModel.executeCommandWithInput() }
+        )
+    }
+
+    // Execute Response Dialog
+    if (showExecuteResponse && lastExecuteResponse != null) {
+        ExecuteResponseDialog(
+            response = lastExecuteResponse!!,
+            middlewareMessage = middlewareMessage,
+            onDismiss = { viewModel.dismissExecuteResponse() }
+        )
+    }
+
+    // Status Bottom Sheet
+    if (showStatusSheet && statusSheetResponse != null) {
+        val sheetState = rememberModalBottomSheetState()
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.dismissStatusSheet() },
+            sheetState = sheetState
+        ) {
+            StatusSheetContent(
+                response = statusSheetResponse!!,
+                solverObject = viewModel.solverObject
+            )
+        }
+    }
 }
 
 @Composable
 private fun ObjectDetailContent(
     solverObject: SolverObject,
     baseUrl: String,
+    executingCommandId: String?,
     onCommandClick: (Command) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -138,6 +208,7 @@ private fun ObjectDetailContent(
 
         CommandsCard(
             commands = solverObject.getCommands(),
+            executingCommandId = executingCommandId,
             onCommandClick = onCommandClick
         )
     }
@@ -298,6 +369,7 @@ private fun DetailRow(
 @Composable
 private fun CommandsCard(
     commands: List<Command>,
+    executingCommandId: String?,
     onCommandClick: (Command) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -325,6 +397,7 @@ private fun CommandsCard(
                     commands.forEach { command ->
                         CommandButton(
                             command = command,
+                            isExecuting = executingCommandId == command.commandName,
                             onClick = { onCommandClick(command) }
                         )
                     }
@@ -337,25 +410,35 @@ private fun CommandsCard(
 @Composable
 private fun CommandButton(
     command: Command,
+    isExecuting: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Button(
         onClick = onClick,
+        enabled = !isExecuting,
         modifier = modifier.fillMaxWidth()
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            command.iconName?.let { iconName ->
-                val iconRes = getCommandIconResource(iconName)
-                if (iconRes != null) {
-                    Icon(
-                        painter = painterResource(id = iconRes),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
+            if (isExecuting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                command.iconName?.let { iconName ->
+                    val iconRes = getCommandIconResource(iconName)
+                    if (iconRes != null) {
+                        Icon(
+                            painter = painterResource(id = iconRes),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
             Text(text = command.displayName)
@@ -370,6 +453,171 @@ private fun getCommandIconResource(iconName: String): Int? {
         "info" -> R.drawable.ic_info
         "refresh" -> R.drawable.ic_refresh
         else -> null
+    }
+}
+
+@Composable
+private fun CommandInputDialog(
+    command: Command,
+    input: String,
+    onInputChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Command Input") },
+        text = {
+            Column {
+                Text("Enter input for '${command.displayName}'")
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = onInputChange,
+                    label = { Text("Enter value") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Execute")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ExecuteResponseDialog(
+    response: ExecuteResponse,
+    middlewareMessage: String?,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = if (response.success) Icons.Default.CheckCircle else Icons.Default.Close,
+                    contentDescription = null,
+                    tint = if (response.success) Color(0xFF4CAF50) else Color(0xFFF44336)
+                )
+                Text(if (response.success) "Success" else "Failed")
+            }
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                middlewareMessage?.let { message ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Middleware",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+
+                response.objectName?.let { name ->
+                    DetailRow(label = "Object", value = name)
+                }
+
+                response.time?.let { time ->
+                    DetailRow(label = "Time", value = time)
+                }
+
+                response.context?.takeIf { it.isNotEmpty() }?.let { context ->
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Text(
+                        text = "Context",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    context.forEach { item ->
+                        DetailRow(label = item.label, value = item.value)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        }
+    )
+}
+
+@Composable
+private fun StatusSheetContent(
+    response: ExecuteResponse,
+    solverObject: SolverObject?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Status",
+            style = MaterialTheme.typography.headlineSmall
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = if (response.success) Icons.Default.CheckCircle else Icons.Default.Close,
+                contentDescription = null,
+                tint = if (response.success) Color(0xFF4CAF50) else Color(0xFFF44336),
+                modifier = Modifier.size(32.dp)
+            )
+            Text(
+                text = if (response.success) "Success" else "Failed",
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+
+        HorizontalDivider()
+
+        solverObject?.let { obj ->
+            DetailRow(label = "Object", value = obj.name)
+            DetailRow(label = "Status", value = obj.status)
+        }
+
+        response.time?.let { time ->
+            DetailRow(label = "Time", value = time)
+        }
+
+        response.context?.takeIf { it.isNotEmpty() }?.let { context ->
+            HorizontalDivider()
+            Text(
+                text = "Details",
+                style = MaterialTheme.typography.titleSmall
+            )
+            context.forEach { item ->
+                DetailRow(label = item.label, value = item.value)
+            }
+        }
     }
 }
 
@@ -483,7 +731,44 @@ private fun CommandsCardPreview() {
                 Command(native = "lock", display = "Lock"),
                 Command(native = "status", display = "Status")
             ),
+            executingCommandId = null,
             onCommandClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun CommandsCardExecutingPreview() {
+    SolverAppTheme {
+        CommandsCard(
+            commands = listOf(
+                Command(native = "unlock", display = "Unlock"),
+                Command(native = "lock", display = "Lock"),
+                Command(native = "status", display = "Status")
+            ),
+            executingCommandId = "unlock",
+            onCommandClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun ExecuteResponseDialogPreview() {
+    SolverAppTheme {
+        ExecuteResponseDialog(
+            response = ExecuteResponse(
+                success = true,
+                objectId = 1,
+                objectName = "Meeting Room A",
+                time = "2025-12-25T12:00:00Z",
+                context = listOf(
+                    ContextItem(key = "status", label = "Status", value = "Unlocked")
+                )
+            ),
+            middlewareMessage = "[StatusMiddleware] Status displayed",
+            onDismiss = {}
         )
     }
 }

@@ -75,17 +75,16 @@ class ObjectsRepository @Inject constructor(
                 provider = session.provider
             )
 
-            val locationData = if (latitude != null && longitude != null) {
-                no.solver.solverapp.data.models.LocationData(latitude, longitude)
-            } else null
+            // TODO: Add location support when implementing geofence features
+            // val locationData = if (latitude != null && longitude != null) {
+            //     LocationData(latitude, longitude)
+            // } else null
 
-            val request = CommandExecutionRequest(
-                command = command,
-                input = input,
-                location = locationData
-            )
-
-            val response = apiService.executeCommand(objectId, request)
+            val response = if (input != null) {
+                apiService.executeCommandWithInput(objectId, command, input)
+            } else {
+                apiService.executeCommand(objectId, command)
+            }
 
             if (response.isSuccessful) {
                 response.body() ?: throw ApiException.Unknown("Empty response")
