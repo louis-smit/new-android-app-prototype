@@ -103,16 +103,35 @@ class MicrosoftAuthService @Inject constructor(
     }
 
     suspend fun getAccessTokenSilently(): AuthTokens? {
-        val app = msalApp ?: return null
+        // Ensure MSAL is initialized
+        if (msalApp == null) {
+            Log.d(TAG, "MSAL not initialized, initializing now...")
+            try {
+                initialize(currentEnvironment)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to initialize MSAL for silent auth", e)
+                return null
+            }
+        }
+
+        val app = msalApp
+        if (app == null) {
+            Log.e(TAG, "MSAL initialization failed, cannot acquire token silently")
+            return null
+        }
+
         val config = AuthConfiguration.current(currentEnvironment)
 
         val accounts = app.accounts
+        Log.d(TAG, "Found ${accounts.size} MSAL account(s)")
+        
         if (accounts.isEmpty()) {
-            Log.d(TAG, "No accounts found for silent token acquisition")
+            Log.w(TAG, "No accounts found for silent token acquisition - user needs to sign in again")
             return null
         }
 
         val account = accounts.first()
+        Log.d(TAG, "Attempting silent token acquisition for account: ${account.username}")
 
         return try {
             suspendCancellableCoroutine { continuation ->
@@ -122,18 +141,19 @@ class MicrosoftAuthService @Inject constructor(
                     .withScopes(config.scopes)
                     .withCallback(object : AuthenticationCallback {
                         override fun onSuccess(authenticationResult: IAuthenticationResult) {
-                            Log.d(TAG, "Silent token acquisition successful")
+                            Log.d(TAG, "✅ Silent token acquisition successful")
                             val tokens = authResultToTokens(authenticationResult)
                             saveTokens(tokens)
                             continuation.resume(tokens)
                         }
 
                         override fun onError(exception: MsalException) {
-                            Log.e(TAG, "Silent token acquisition failed", exception)
+                            Log.e(TAG, "❌ Silent token acquisition failed: ${exception.errorCode} - ${exception.message}", exception)
                             continuation.resumeWithException(exception)
                         }
 
                         override fun onCancel() {
+                            Log.w(TAG, "Silent auth was cancelled")
                             continuation.resumeWithException(AuthCancelledException("Silent auth cancelled"))
                         }
                     })
@@ -142,7 +162,7 @@ class MicrosoftAuthService @Inject constructor(
                 app.acquireTokenSilentAsync(params)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Silent token acquisition exception", e)
+            Log.e(TAG, "Silent token acquisition exception: ${e.javaClass.simpleName} - ${e.message}", e)
             null
         }
     }
