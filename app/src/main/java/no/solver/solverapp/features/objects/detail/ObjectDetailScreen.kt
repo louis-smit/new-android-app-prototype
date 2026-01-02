@@ -640,7 +640,7 @@ private fun StatusSheetContent(
                     text = "OBJECT",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                    modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
                 )
                 
                 Surface(
@@ -680,7 +680,7 @@ private fun StatusSheetContent(
                     text = "DETAILS",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                    modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
                 )
                 
                 Surface(
