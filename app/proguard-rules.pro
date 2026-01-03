@@ -19,3 +19,14 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# MSAL / Microsoft Identity - suppress missing annotation warnings
+-dontwarn edu.umd.cs.findbugs.annotations.**
+-dontwarn com.google.auto.value.AutoValue
+
+# Keep MSAL classes
+-keep class com.microsoft.identity.** { *; }
+-keep class com.microsoft.aad.** { *; }
+
+# OpenTelemetry
+-dontwarn io.opentelemetry.**
