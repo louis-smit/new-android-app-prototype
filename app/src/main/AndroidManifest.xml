@@ -37,7 +37,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:host="no.solver.solverapp"
+                    android:host="no.solver.solverappdemo"
                     android:path="/ga0RGNYHvNM5d0SLGQfpQWAPGJ8%3D"
                     android:scheme="msauth" />
             </intent-filter>

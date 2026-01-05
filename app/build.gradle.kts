@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-    namespace = "no.solver.solverapp"
+    namespace = "no.solver.solverappdemo"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "no.solver.solverapp"
+        applicationId = "no.solver.solverappdemo"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
