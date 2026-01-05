@@ -23,6 +23,16 @@ android {
         // MS Client IDs - same as iOS Config.xcconfig
         buildConfigField("String", "SOLVER_MS_CLIENT_ID", "\"c31d3ea5-b6fa-4543-ac2d-e110bdf4a6e5\"")
         buildConfigField("String", "ZOHM_MS_CLIENT_ID", "\"ecc111e6-e21d-4a2f-85f3-1db37956f3df\"")
+
+        // Vipps OAuth - same as iOS Config.xcconfig
+        buildConfigField("String", "SOLVER_VIPPS_CLIENT_ID", "\"61c3e76e-a58a-4b00-aa7f-da59841ce776\"")
+        buildConfigField("String", "SOLVER_VIPPS_SECRET", "\"MGlHSU9SSnlnaTE2dDk2OVhDblQ=\"")
+        buildConfigField("String", "ZOHM_VIPPS_CLIENT_ID", "\"efca7a24-cf75-4cb2-a988-83b2af39c74f\"")
+        buildConfigField("String", "ZOHM_VIPPS_SECRET", "\"7ba4818d-32dc-4869-846c-1998433ca77e\"")
+
+        // App User Credentials for user registration - same as iOS Config.xcconfig
+        buildConfigField("String", "APP_USER_OID", "\"961b7aa7-0530-495d-a3d0-5294340e608f\"")
+        buildConfigField("String", "APP_USER_PASSWORD", "\"C9#kP2@mL5vX8jQ\"") // From iOS Config.xcconfig
     }
 
     buildTypes {
@@ -114,6 +124,9 @@ dependencies {
 
     // Microsoft Auth
     implementation(libs.msal)
+
+    // Browser Custom Tabs (for Vipps OAuth)
+    implementation(libs.browser)
 
     // Image Loading
     implementation(libs.coil.compose)

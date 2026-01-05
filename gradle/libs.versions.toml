@@ -28,6 +28,9 @@ securityCrypto = "1.1.0-alpha06"
 # Microsoft Auth
 msal = "5.4.0"
 
+# Browser Custom Tabs
+browser = "1.8.0"
+
 # Image Loading
 coil = "2.7.0"
 
@@ -73,6 +76,9 @@ security-crypto = { group = "androidx.security", name = "security-crypto", versi
 
 # Microsoft Auth
 msal = { group = "com.microsoft.identity.client", name = "msal", version.ref = "msal" }
+
+# Browser Custom Tabs
+browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 
 # Image Loading
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }

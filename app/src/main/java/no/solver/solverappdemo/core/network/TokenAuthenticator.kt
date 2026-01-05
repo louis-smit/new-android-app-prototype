@@ -10,6 +10,7 @@ import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.Session
 import no.solver.solverappdemo.features.auth.services.MicrosoftAuthService
 import no.solver.solverappdemo.features.auth.services.SessionManager
+import no.solver.solverappdemo.features.auth.services.VippsAuthService
 import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
@@ -31,7 +32,8 @@ class TokenAuthenticator @Inject constructor(
     private val tokenStorage: TokenStorage,
     private val sessionManager: SessionManager,
     // Use Provider to break circular dependency with OkHttpClient
-    private val microsoftAuthServiceProvider: Provider<MicrosoftAuthService>
+    private val microsoftAuthServiceProvider: Provider<MicrosoftAuthService>,
+    private val vippsAuthServiceProvider: Provider<VippsAuthService>
 ) : Authenticator {
 
     companion object {
@@ -128,9 +130,11 @@ class TokenAuthenticator @Inject constructor(
                     microsoftAuthService.getAccessTokenSilently()
                 }
                 AuthProvider.VIPPS -> {
-                    // TODO: Implement VippsAuthService.refreshToken()
-                    Log.w(TAG, "Vipps token refresh not yet implemented")
-                    null
+                    val vippsAuthService = vippsAuthServiceProvider.get()
+                    vippsAuthService.initialize(session.environment)
+                    session.tokens.refreshToken?.let { refreshToken ->
+                        vippsAuthService.refreshToken(refreshToken)
+                    }
                 }
                 AuthProvider.MOBILE -> {
                     // TODO: Implement MobileAuthService.refreshToken()

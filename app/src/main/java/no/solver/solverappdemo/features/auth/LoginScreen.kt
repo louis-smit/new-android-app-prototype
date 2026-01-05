@@ -39,13 +39,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.net.toUri
 import androidx.hilt.navigation.compose.hiltViewModel
 import no.solver.solverappdemo.R
 import no.solver.solverappdemo.core.config.AuthProvider
 import no.solver.solverappdemo.ui.theme.SolverAppTheme
 
-// iOS-matching blue color
+// iOS-matching colors
 private val MicrosoftBlue = Color(0xFF007AFF)
+private val VippsOrange = Color(0xFFFF5B24)
 
 @Composable
 fun LoginScreen(
@@ -126,6 +129,15 @@ fun LoginScreen(
                 uiState = uiState,
                 onMicrosoftSignIn = {
                     activity?.let { viewModel.signInWithMicrosoft(it) }
+                },
+                onVippsSignIn = {
+                    activity?.let { act ->
+                        viewModel.signInWithVipps(act) { authUri ->
+                            // Launch Vipps OAuth in Custom Tab
+                            val customTabsIntent = CustomTabsIntent.Builder().build()
+                            customTabsIntent.launchUrl(act, authUri)
+                        }
+                    }
                 }
             )
 
@@ -138,6 +150,7 @@ fun LoginScreen(
 private fun SignInButtons(
     uiState: LoginUiState,
     onMicrosoftSignIn: () -> Unit,
+    onVippsSignIn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isSigningIn = uiState is LoginUiState.SigningIn
@@ -195,19 +208,51 @@ private fun SignInButtons(
             }
         }
 
-        // Vipps button (placeholder - M6)
-        OutlinedButton(
-            onClick = { /* TODO: Implement Vipps sign-in in M6 */ },
-            enabled = false,
+        // Vipps sign-in button
+        Button(
+            onClick = onVippsSignIn,
+            enabled = !isSigningIn,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text(
-                text = "Vipps",
-                style = MaterialTheme.typography.titleMedium
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = VippsOrange
             )
+        ) {
+            if (signingInProvider == AuthProvider.VIPPS) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Signing in...",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = Color.White
+                )
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_vipps),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Vipps",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = Color.White
+                    )
+                }
+            }
         }
 
         // Mobile button (placeholder - M6)
@@ -248,7 +293,8 @@ private fun LoginScreenPreview() {
             Spacer(modifier = Modifier.height(48.dp))
             SignInButtons(
                 uiState = LoginUiState.Idle,
-                onMicrosoftSignIn = {}
+                onMicrosoftSignIn = {},
+                onVippsSignIn = {}
             )
         }
     }

@@ -18,6 +18,8 @@ import no.solver.solverappdemo.features.auth.models.Session
 import no.solver.solverappdemo.features.auth.services.AuthCancelledException
 import no.solver.solverappdemo.features.auth.services.MicrosoftAuthService
 import no.solver.solverappdemo.features.auth.services.SessionManager
+import no.solver.solverappdemo.features.auth.services.VippsAuthException
+import no.solver.solverappdemo.features.auth.services.VippsAuthService
 import javax.inject.Inject
 
 sealed class LoginUiState {
@@ -31,6 +33,7 @@ sealed class LoginUiState {
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val microsoftAuthService: MicrosoftAuthService,
+    private val vippsAuthService: VippsAuthService,
     private val sessionManager: SessionManager
 ) : ViewModel() {
 
@@ -92,6 +95,62 @@ class LoginViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /**
+     * Start Vipps sign-in flow.
+     * @param activity The current activity
+     * @param launchAuth Callback to launch the OAuth URL (e.g., via Custom Tabs)
+     */
+    fun signInWithVipps(activity: Activity, launchAuth: (android.net.Uri) -> Unit) {
+        viewModelScope.launch {
+            Log.d(TAG, "Starting Vipps sign-in")
+            _uiState.value = LoginUiState.SigningIn(AuthProvider.VIPPS)
+
+            try {
+                val environment = sessionManager.getAuthEnvironment()
+                vippsAuthService.initialize(environment)
+
+                val tokens = vippsAuthService.signIn(activity, launchAuth)
+
+                sessionManager.createSession(
+                    provider = AuthProvider.VIPPS,
+                    environment = environment,
+                    tokens = tokens
+                )
+
+                Log.d(TAG, "Vipps sign-in successful")
+                _uiState.value = LoginUiState.Success
+            } catch (e: AuthCancelledException) {
+                Log.d(TAG, "Vipps sign-in cancelled by user")
+                _uiState.value = LoginUiState.Idle
+            } catch (e: VippsAuthException) {
+                Log.e(TAG, "Vipps sign-in failed", e)
+                _uiState.value = LoginUiState.Error(
+                    e.message ?: "Vipps sign-in failed. Please try again."
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Vipps sign-in failed", e)
+                _uiState.value = LoginUiState.Error(
+                    e.message ?: "Sign-in failed. Please try again."
+                )
+            }
+        }
+    }
+
+    /**
+     * Handle Vipps OAuth callback from deep link
+     */
+    fun handleVippsCallback(uri: android.net.Uri) {
+        Log.d(TAG, "Handling Vipps callback: $uri")
+        vippsAuthService.handleAuthCallback(uri)
+    }
+
+    /**
+     * Cancel any pending Vipps auth flow
+     */
+    fun cancelPendingVippsAuth() {
+        vippsAuthService.cancelPendingAuth()
     }
 
     fun setAuthEnvironment(environment: AuthEnvironment) {
