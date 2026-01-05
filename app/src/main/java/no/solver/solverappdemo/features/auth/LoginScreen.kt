@@ -116,7 +116,7 @@ fun LoginScreen(
 
             // Subtitle
             Text(
-                text = "Sign in with your Microsoft account to access your objects",
+                text = "Sign in to access your objects",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.Gray,
                 textAlign = TextAlign.Center
