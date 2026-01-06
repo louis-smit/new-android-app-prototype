@@ -233,4 +233,41 @@ class MobileLoginViewModel @Inject constructor(
         registeredUser = null
         _uiState.value = MobileLoginUiState.InputPhone
     }
+
+    /**
+     * Resend the SMS verification code
+     */
+    fun resendCode() {
+        if (!isRegisterValid.value) return
+
+        _pin.value = ""
+
+        viewModelScope.launch {
+            _uiState.value = MobileLoginUiState.Loading
+
+            try {
+                val environment = sessionManager.getAuthEnvironment()
+                mobileAuthService.initialize(environment)
+
+                val input = MobileRegistrationInput(
+                    displayName = _displayName.value,
+                    mobileNumber = "${_countryCode.value}${_mobileNumber.value}"
+                )
+
+                Log.d(TAG, "Resending code to: ${input.mobileNumber}")
+
+                registeredUser = mobileAuthService.registerMobileUser(input)
+
+                Log.d(TAG, "Code resent successfully")
+                _uiState.value = MobileLoginUiState.InputPin
+
+            } catch (e: MobileAuthException) {
+                Log.e(TAG, "Resend failed: ${e.message}", e)
+                _uiState.value = MobileLoginUiState.Error(e.message ?: "Failed to resend code")
+            } catch (e: Exception) {
+                Log.e(TAG, "Resend failed: ${e.message}", e)
+                _uiState.value = MobileLoginUiState.Error("Failed to resend code. Please try again.")
+            }
+        }
+    }
 }

@@ -348,7 +348,7 @@ private fun InputPinView(viewModel: MobileLoginViewModel, isPinValid: Boolean) {
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        TextButton(onClick = { /* TODO: Implement resend */ }) {
+        TextButton(onClick = { viewModel.resendCode() }) {
             Text(
                 "Didn't receive the code? Resend",
                 style = MaterialTheme.typography.labelMedium,
