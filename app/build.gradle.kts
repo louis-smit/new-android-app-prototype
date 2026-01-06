@@ -32,7 +32,7 @@ android {
 
         // App User Credentials for user registration - same as iOS Config.xcconfig
         buildConfigField("String", "APP_USER_OID", "\"961b7aa7-0530-495d-a3d0-5294340e608f\"")
-        buildConfigField("String", "APP_USER_PASSWORD", "\"C9#kP2@mL5vX8jQ\"") // From iOS Config.xcconfig
+        buildConfigField("String", "APP_USER_PASSWORD", "\"01535ff0-c56e-42d5-ad97-6012cdb7a423\"")
     }
 
     buildTypes {

@@ -9,6 +9,7 @@ import no.solver.solverappdemo.core.storage.TokenStorage
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.Session
 import no.solver.solverappdemo.features.auth.services.MicrosoftAuthService
+import no.solver.solverappdemo.features.auth.services.MobileAuthService
 import no.solver.solverappdemo.features.auth.services.SessionManager
 import no.solver.solverappdemo.features.auth.services.VippsAuthService
 import okhttp3.Authenticator
@@ -33,7 +34,8 @@ class TokenAuthenticator @Inject constructor(
     private val sessionManager: SessionManager,
     // Use Provider to break circular dependency with OkHttpClient
     private val microsoftAuthServiceProvider: Provider<MicrosoftAuthService>,
-    private val vippsAuthServiceProvider: Provider<VippsAuthService>
+    private val vippsAuthServiceProvider: Provider<VippsAuthService>,
+    private val mobileAuthServiceProvider: Provider<MobileAuthService>
 ) : Authenticator {
 
     companion object {
@@ -137,9 +139,11 @@ class TokenAuthenticator @Inject constructor(
                     }
                 }
                 AuthProvider.MOBILE -> {
-                    // TODO: Implement MobileAuthService.refreshToken()
-                    Log.w(TAG, "Mobile token refresh not yet implemented")
-                    null
+                    val mobileAuthService = mobileAuthServiceProvider.get()
+                    mobileAuthService.initialize(session.environment)
+                    session.tokens.refreshToken?.let { refreshToken ->
+                        mobileAuthService.refreshToken(refreshToken)
+                    }
                 }
             }
 

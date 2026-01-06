@@ -53,7 +53,8 @@ private val VippsOrange = Color(0xFFFF5B24)
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel = hiltViewModel(),
-    onLoginSuccess: () -> Unit = {}
+    onLoginSuccess: () -> Unit = {},
+    onMobileSignIn: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
@@ -138,7 +139,8 @@ fun LoginScreen(
                             customTabsIntent.launchUrl(act, authUri)
                         }
                     }
-                }
+                },
+                onMobileSignIn = onMobileSignIn
             )
 
             Spacer(modifier = Modifier.height(48.dp))
@@ -151,6 +153,7 @@ private fun SignInButtons(
     uiState: LoginUiState,
     onMicrosoftSignIn: () -> Unit,
     onVippsSignIn: () -> Unit,
+    onMobileSignIn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isSigningIn = uiState is LoginUiState.SigningIn
@@ -255,19 +258,31 @@ private fun SignInButtons(
             }
         }
 
-        // Mobile button (placeholder - M6)
+        // Mobile sign-in button
         OutlinedButton(
-            onClick = { /* TODO: Implement Mobile sign-in in M6 */ },
-            enabled = false,
+            onClick = onMobileSignIn,
+            enabled = !isSigningIn,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text(
-                text = "Mobile",
-                style = MaterialTheme.typography.titleMedium
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_phone),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Mobile",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold
+                    )
+                )
+            }
         }
     }
 }
@@ -294,7 +309,8 @@ private fun LoginScreenPreview() {
             SignInButtons(
                 uiState = LoginUiState.Idle,
                 onMicrosoftSignIn = {},
-                onVippsSignIn = {}
+                onVippsSignIn = {},
+                onMobileSignIn = {}
             )
         }
     }

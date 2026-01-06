@@ -11,6 +11,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
+import no.solver.solverappdemo.core.storage.TokenStorage
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.Session
 import java.util.UUID
@@ -20,7 +21,8 @@ import javax.inject.Singleton
 @Singleton
 class SessionManager @Inject constructor(
     private val dataStore: DataStore<Preferences>,
-    private val json: Json
+    private val json: Json,
+    private val tokenStorage: TokenStorage
 ) {
     companion object {
         private val KEY_CURRENT_SESSION_ID = stringPreferencesKey("current_session_id")
@@ -73,6 +75,11 @@ class SessionManager @Inject constructor(
             prefs[KEY_CURRENT_SESSION_ID] = session.id
         }
 
+        // Also store in TokenStorage for AuthInterceptor
+        tokenStorage.saveAccessToken(tokens.accessToken)
+        tokens.refreshToken?.let { tokenStorage.saveRefreshToken(it) }
+        tokenStorage.saveTokenExpiry(tokens.expiresAtMillis)
+
         return session
     }
 
@@ -100,8 +107,18 @@ class SessionManager @Inject constructor(
     }
 
     suspend fun switchToSession(sessionId: String) {
+        val sessions = getAllSessions()
+        val targetSession = sessions.find { it.id == sessionId }
+        
         dataStore.edit { prefs ->
             prefs[KEY_CURRENT_SESSION_ID] = sessionId
+        }
+
+        // Update TokenStorage with the new session's tokens
+        targetSession?.let { session ->
+            tokenStorage.saveAccessToken(session.tokens.accessToken)
+            session.tokens.refreshToken?.let { tokenStorage.saveRefreshToken(it) }
+            tokenStorage.saveTokenExpiry(session.tokens.expiresAtMillis)
         }
     }
 
@@ -114,6 +131,7 @@ class SessionManager @Inject constructor(
             prefs.remove(KEY_SESSIONS)
             prefs.remove(KEY_CURRENT_SESSION_ID)
         }
+        tokenStorage.clearTokens()
     }
 
     private fun getSessions(prefs: Preferences): List<Session> {

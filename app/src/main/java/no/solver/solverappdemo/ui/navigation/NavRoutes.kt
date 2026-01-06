@@ -10,6 +10,9 @@ sealed interface NavRoute {
     data object Login : NavRoute
 
     @Serializable
+    data object MobileLogin : NavRoute
+
+    @Serializable
     data object Main : NavRoute
 
     @Serializable

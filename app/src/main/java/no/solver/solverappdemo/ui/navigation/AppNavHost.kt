@@ -35,6 +35,7 @@ import kotlinx.coroutines.delay
 import no.solver.solverappdemo.data.models.SolverObject
 import no.solver.solverappdemo.features.auth.LoginScreen
 import no.solver.solverappdemo.features.auth.LoginViewModel
+import no.solver.solverappdemo.features.auth.MobileLoginScreen
 import no.solver.solverappdemo.features.objects.ObjectsScreen
 import no.solver.solverappdemo.features.objects.detail.ObjectDetailScreen
 
@@ -96,6 +97,35 @@ fun AppNavHost(
                     navController.navigate(NavRoute.Main) {
                         popUpTo(NavRoute.Login) { inclusive = true }
                     }
+                },
+                onMobileSignIn = {
+                    navController.navigate(NavRoute.MobileLogin)
+                }
+            )
+        }
+
+        composable<NavRoute.MobileLogin>(
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Up,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            exitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Down,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            }
+        ) {
+            MobileLoginScreen(
+                onLoginSuccess = {
+                    navController.navigate(NavRoute.Main) {
+                        popUpTo(NavRoute.Login) { inclusive = true }
+                    }
+                },
+                onCancel = {
+                    navController.popBackStack()
                 }
             )
         }
