@@ -134,6 +134,11 @@ dependencies {
     // Image Loading
     implementation(libs.coil.compose)
 
+    // Room Database
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockk)

@@ -21,6 +21,7 @@ import no.solver.solverappdemo.features.auth.services.MicrosoftAuthService
 import no.solver.solverappdemo.features.auth.services.SessionManager
 import no.solver.solverappdemo.features.auth.services.VippsAuthException
 import no.solver.solverappdemo.features.auth.services.VippsAuthService
+import no.solver.solverappdemo.data.repositories.OfflineFirstObjectsRepository
 import javax.inject.Inject
 
 sealed class LoginUiState {
@@ -35,7 +36,8 @@ sealed class LoginUiState {
 class LoginViewModel @Inject constructor(
     private val microsoftAuthService: MicrosoftAuthService,
     private val vippsAuthService: VippsAuthService,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val offlineFirstRepository: OfflineFirstObjectsRepository
 ) : ViewModel() {
 
     companion object {
@@ -174,6 +176,7 @@ class LoginViewModel @Inject constructor(
             Log.d(TAG, "Signing out")
             try {
                 microsoftAuthService.signOut()
+                offlineFirstRepository.clearAllCache()
                 sessionManager.clearAllSessions()
                 _uiState.value = LoginUiState.Idle
             } catch (e: Exception) {

@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import no.solver.solverappdemo.R
 import no.solver.solverappdemo.data.models.SolverObject
+import no.solver.solverappdemo.ui.components.OfflineBanner
 import no.solver.solverappdemo.ui.theme.SolverAppTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,6 +47,8 @@ fun ObjectsScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val filteredObjects by viewModel.filteredObjects.collectAsState()
     val apiBaseUrl by viewModel.apiBaseUrl.collectAsState()
+    val isOffline by viewModel.isOffline.collectAsState()
+    val lastSyncedAt by viewModel.lastSyncedAt.collectAsState()
 
     Scaffold(
         topBar = {
@@ -54,32 +57,43 @@ fun ObjectsScreen(
             )
         }
     ) { innerPadding ->
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = { viewModel.refreshObjects() },
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (uiState) {
-                is ObjectsUiState.Loading -> {
-                    LoadingContent()
-                }
-                is ObjectsUiState.Success -> {
-                    ObjectsList(
-                        objects = filteredObjects,
-                        baseUrl = apiBaseUrl,
-                        onObjectClick = onObjectClick
-                    )
-                }
-                is ObjectsUiState.Empty -> {
-                    EmptyContent(onRetry = { viewModel.retry() })
-                }
-                is ObjectsUiState.Error -> {
-                    ErrorContent(
-                        message = (uiState as ObjectsUiState.Error).message,
-                        onRetry = { viewModel.retry() }
-                    )
+            if (isOffline) {
+                OfflineBanner(lastSyncedAt = lastSyncedAt)
+            }
+            
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = { viewModel.refreshObjects() },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                when (val state = uiState) {
+                    is ObjectsUiState.Loading -> {
+                        LoadingContent()
+                    }
+                    is ObjectsUiState.Success -> {
+                        ObjectsList(
+                            objects = filteredObjects,
+                            baseUrl = apiBaseUrl,
+                            onObjectClick = onObjectClick
+                        )
+                    }
+                    is ObjectsUiState.Empty -> {
+                        EmptyContent(onRetry = { viewModel.retry() })
+                    }
+                    is ObjectsUiState.EmptyOffline -> {
+                        OfflineEmptyContent(onRetry = { viewModel.retry() })
+                    }
+                    is ObjectsUiState.Error -> {
+                        ErrorContent(
+                            message = state.message,
+                            onRetry = { viewModel.retry() }
+                        )
+                    }
                 }
             }
         }
@@ -170,6 +184,44 @@ private fun EmptyContent(
 }
 
 @Composable
+private fun OfflineEmptyContent(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "No Cached Data",
+                style = MaterialTheme.typography.titleLarge
+            )
+            Text(
+                text = "Connect to the internet to load your objects.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(onClick = onRetry) {
+                Text("Retry")
+            }
+        }
+    }
+}
+
+@Composable
 private fun ErrorContent(
     message: String,
     onRetry: () -> Unit,
@@ -221,6 +273,14 @@ private fun LoadingContentPreview() {
 private fun EmptyContentPreview() {
     SolverAppTheme {
         EmptyContent(onRetry = {})
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun OfflineEmptyContentPreview() {
+    SolverAppTheme {
+        OfflineEmptyContent(onRetry = {})
     }
 }
 

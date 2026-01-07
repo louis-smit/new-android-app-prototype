@@ -14,30 +14,54 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.config.APIConfiguration
-import no.solver.solverappdemo.core.network.ApiResult
+import no.solver.solverappdemo.core.network.ConnectivityObserver
+import no.solver.solverappdemo.core.network.NetworkStatus
 import no.solver.solverappdemo.data.models.SolverObject
-import no.solver.solverappdemo.data.repositories.ObjectsRepository
+import no.solver.solverappdemo.data.repositories.ObjectsLoadResult
+import no.solver.solverappdemo.data.repositories.OfflineFirstObjectsRepository
 import no.solver.solverappdemo.features.auth.services.SessionManager
 import javax.inject.Inject
 
 sealed class ObjectsUiState {
     data object Loading : ObjectsUiState()
-    data class Success(val objects: List<SolverObject>) : ObjectsUiState()
+    data class Success(
+        val objects: List<SolverObject>,
+        val isFromCache: Boolean = false,
+        val lastSyncedAt: Long? = null
+    ) : ObjectsUiState()
     data object Empty : ObjectsUiState()
+    data class EmptyOffline(val lastSyncedAt: Long?) : ObjectsUiState()
     data class Error(val message: String) : ObjectsUiState()
 }
 
 @OptIn(FlowPreview::class)
 @HiltViewModel
 class ObjectsViewModel @Inject constructor(
-    private val objectsRepository: ObjectsRepository,
-    private val sessionManager: SessionManager
+    private val offlineFirstRepository: OfflineFirstObjectsRepository,
+    private val sessionManager: SessionManager,
+    private val connectivityObserver: ConnectivityObserver
 ) : ViewModel() {
 
     companion object {
         private const val TAG = "ObjectsViewModel"
         private const val SEARCH_DEBOUNCE_MS = 150L
     }
+
+    val isOffline: StateFlow<Boolean> = connectivityObserver.networkStatus
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = if (connectivityObserver.isConnected()) NetworkStatus.Available else NetworkStatus.Unavailable
+        )
+        .let { statusFlow ->
+            combine(statusFlow, MutableStateFlow(Unit)) { status, _ ->
+                status == NetworkStatus.Unavailable
+            }.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = !connectivityObserver.isConnected()
+            )
+        }
 
     val apiBaseUrl: StateFlow<String> = sessionManager.currentSessionFlow
         .stateIn(
@@ -53,7 +77,7 @@ class ObjectsViewModel @Inject constructor(
                         provider = session.provider
                     ).baseURL
                 } else {
-                    "https://api365-demo.solver.no" // Fallback
+                    "https://api365-demo.solver.no"
                 }
             }.stateIn(
                 scope = viewModelScope,
@@ -73,6 +97,9 @@ class ObjectsViewModel @Inject constructor(
 
     private val _allObjects = MutableStateFlow<List<SolverObject>>(emptyList())
 
+    private val _lastSyncedAt = MutableStateFlow<Long?>(null)
+    val lastSyncedAt: StateFlow<Long?> = _lastSyncedAt.asStateFlow()
+
     val filteredObjects: StateFlow<List<SolverObject>> = combine(
         _allObjects,
         _searchQuery.debounce(SEARCH_DEBOUNCE_MS)
@@ -86,6 +113,23 @@ class ObjectsViewModel @Inject constructor(
 
     init {
         loadObjects()
+        observeConnectivityChanges()
+    }
+
+    private fun observeConnectivityChanges() {
+        viewModelScope.launch {
+            connectivityObserver.networkStatus.collect { status ->
+                if (status == NetworkStatus.Available) {
+                    val currentState = _uiState.value
+                    if (currentState is ObjectsUiState.Success && currentState.isFromCache) {
+                        Log.d(TAG, "Network restored, refreshing in background...")
+                        refreshInBackground()
+                    } else if (currentState is ObjectsUiState.EmptyOffline) {
+                        loadObjects()
+                    }
+                }
+            }
+        }
     }
 
     fun loadObjects() {
@@ -93,23 +137,9 @@ class ObjectsViewModel @Inject constructor(
             Log.d(TAG, "Loading objects")
             _uiState.value = ObjectsUiState.Loading
 
-            when (val result = objectsRepository.getUserObjects()) {
-                is ApiResult.Success -> {
-                    val objects = result.data
-                    _allObjects.value = objects
-
-                    _uiState.value = if (objects.isEmpty()) {
-                        ObjectsUiState.Empty
-                    } else {
-                        ObjectsUiState.Success(objects)
-                    }
-                    Log.d(TAG, "Successfully loaded ${objects.size} objects")
-                }
-                is ApiResult.Error -> {
-                    val message = result.exception.message ?: "Unknown error"
-                    _uiState.value = ObjectsUiState.Error(message)
-                    Log.e(TAG, "Failed to load objects: $message")
-                }
+            when (val result = offlineFirstRepository.loadObjects()) {
+                is ObjectsLoadResult.Success -> handleSuccess(result)
+                is ObjectsLoadResult.Error -> handleError(result)
             }
         }
     }
@@ -119,29 +149,80 @@ class ObjectsViewModel @Inject constructor(
             Log.d(TAG, "Refreshing objects")
             _isRefreshing.value = true
 
-            when (val result = objectsRepository.getUserObjects()) {
-                is ApiResult.Success -> {
-                    val objects = result.data
-                    _allObjects.value = objects
-
-                    _uiState.value = if (objects.isEmpty()) {
-                        ObjectsUiState.Empty
+            when (val result = offlineFirstRepository.refreshObjects()) {
+                is ObjectsLoadResult.Success -> handleSuccess(result)
+                is ObjectsLoadResult.Error -> {
+                    if (_allObjects.value.isEmpty()) {
+                        handleError(result)
                     } else {
-                        ObjectsUiState.Success(objects)
+                        Log.w(TAG, "Refresh failed but keeping cached data: ${result.exception.message}")
                     }
-                    Log.d(TAG, "Successfully refreshed ${objects.size} objects")
-                }
-                is ApiResult.Error -> {
-                    // Don't change to error state if we already have data on refresh failure
-                    if (_uiState.value is ObjectsUiState.Error) {
-                        val message = result.exception.message ?: "Unknown error"
-                        _uiState.value = ObjectsUiState.Error(message)
-                    }
-                    Log.e(TAG, "Failed to refresh objects: ${result.exception.message}")
                 }
             }
 
             _isRefreshing.value = false
+        }
+    }
+
+    private fun refreshInBackground() {
+        viewModelScope.launch {
+            when (val result = offlineFirstRepository.refreshObjects()) {
+                is ObjectsLoadResult.Success -> {
+                    _allObjects.value = result.objects
+                    _lastSyncedAt.value = result.lastSyncedAt
+                    _uiState.value = ObjectsUiState.Success(
+                        objects = result.objects,
+                        isFromCache = false,
+                        lastSyncedAt = result.lastSyncedAt
+                    )
+                    Log.d(TAG, "Background refresh completed: ${result.objects.size} objects")
+                }
+                is ObjectsLoadResult.Error -> {
+                    Log.w(TAG, "Background refresh failed: ${result.exception.message}")
+                }
+            }
+        }
+    }
+
+    private fun handleSuccess(result: ObjectsLoadResult.Success) {
+        val objects = result.objects
+        _allObjects.value = objects
+        _lastSyncedAt.value = result.lastSyncedAt
+
+        _uiState.value = if (objects.isEmpty()) {
+            if (!connectivityObserver.isConnected()) {
+                ObjectsUiState.EmptyOffline(result.lastSyncedAt)
+            } else {
+                ObjectsUiState.Empty
+            }
+        } else {
+            ObjectsUiState.Success(
+                objects = objects,
+                isFromCache = result.isFromCache,
+                lastSyncedAt = result.lastSyncedAt
+            )
+        }
+        Log.d(TAG, "Loaded ${objects.size} objects (fromCache: ${result.isFromCache})")
+    }
+
+    private fun handleError(result: ObjectsLoadResult.Error) {
+        val message = result.exception.message ?: "Unknown error"
+        if (result.cachedObjects != null && result.cachedObjects.isNotEmpty()) {
+            _allObjects.value = result.cachedObjects
+            _lastSyncedAt.value = result.lastSyncedAt
+            _uiState.value = ObjectsUiState.Success(
+                objects = result.cachedObjects,
+                isFromCache = true,
+                lastSyncedAt = result.lastSyncedAt
+            )
+            Log.w(TAG, "Error but showing cached data: $message")
+        } else {
+            if (!connectivityObserver.isConnected()) {
+                _uiState.value = ObjectsUiState.EmptyOffline(null)
+            } else {
+                _uiState.value = ObjectsUiState.Error(message)
+            }
+            Log.e(TAG, "Failed to load objects: $message")
         }
     }
 
@@ -173,7 +254,6 @@ class ObjectsViewModel @Inject constructor(
         }
     }
 
-    // Statistics
     val statistics: ObjectsStatistics
         get() {
             val objects = _allObjects.value
