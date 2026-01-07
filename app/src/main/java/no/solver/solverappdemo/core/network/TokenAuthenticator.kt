@@ -149,6 +149,16 @@ class TokenAuthenticator @Inject constructor(
 
             if (tokens != null) {
                 Log.d(TAG, "Token refresh successful, new token expires in ${tokens.secondsUntilExpiry}s")
+                
+                // Persist the new tokens
+                tokenStorage.saveAccessToken(tokens.accessToken)
+                tokens.refreshToken?.let { tokenStorage.saveRefreshToken(it) }
+                tokenStorage.saveTokenExpiry(tokens.expiresAtMillis)
+                
+                // Update session with new tokens
+                val updatedSession = session.copy(tokens = tokens)
+                sessionManager.updateSession(updatedSession)
+                
                 tokens.accessToken
             } else {
                 // Refresh failed - clear session to force re-login (matches iOS behavior)

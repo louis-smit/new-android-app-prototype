@@ -1,6 +1,7 @@
 package no.solver.solverappdemo.features.auth
 
 import android.app.Activity
+import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -98,20 +99,20 @@ class LoginViewModel @Inject constructor(
     }
 
     /**
-     * Start Vipps sign-in flow.
+     * Start Vipps sign-in flow using AppAuth.
      * @param activity The current activity
-     * @param launchAuth Callback to launch the OAuth URL (e.g., via Custom Tabs)
+     * @param launchForResult Callback to launch the OAuth intent via startActivityForResult
      */
-    fun signInWithVipps(activity: Activity, launchAuth: (android.net.Uri) -> Unit) {
+    fun signInWithVipps(activity: Activity, launchForResult: (Intent, Int) -> Unit) {
         viewModelScope.launch {
-            Log.d(TAG, "Starting Vipps sign-in")
+            Log.d(TAG, "Starting Vipps sign-in with AppAuth")
             _uiState.value = LoginUiState.SigningIn(AuthProvider.VIPPS)
 
             try {
                 val environment = sessionManager.getAuthEnvironment()
                 vippsAuthService.initialize(environment)
 
-                val tokens = vippsAuthService.signIn(activity, launchAuth)
+                val tokens = vippsAuthService.signIn(activity, launchForResult)
 
                 sessionManager.createSession(
                     provider = AuthProvider.VIPPS,
@@ -139,11 +140,11 @@ class LoginViewModel @Inject constructor(
     }
 
     /**
-     * Handle Vipps OAuth callback from deep link
+     * Handle Vipps OAuth result from onActivityResult (AppAuth callback)
      */
-    fun handleVippsCallback(uri: android.net.Uri) {
-        Log.d(TAG, "Handling Vipps callback: $uri")
-        vippsAuthService.handleAuthCallback(uri)
+    fun handleVippsAuthResult(data: Intent?) {
+        Log.d(TAG, "Handling Vipps auth result")
+        vippsAuthService.handleAuthResult(data)
     }
 
     /**
@@ -152,6 +153,11 @@ class LoginViewModel @Inject constructor(
     fun cancelPendingVippsAuth() {
         vippsAuthService.cancelPendingAuth()
     }
+    
+    /**
+     * Check if there's a pending Vipps auth flow
+     */
+    fun hasPendingVippsAuth(): Boolean = vippsAuthService.hasPendingAuth()
 
     fun setAuthEnvironment(environment: AuthEnvironment) {
         viewModelScope.launch {

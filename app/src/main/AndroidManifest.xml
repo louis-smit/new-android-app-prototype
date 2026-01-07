@@ -28,7 +28,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             
-            <!-- Vipps OAuth callback deep link -->
+            </activity>
+
+        <!-- AppAuth redirect handler for Vipps OAuth (handles web fallback automatically) -->
+        <activity
+            android:name="net.openid.appauth.RedirectUriReceiverActivity"
+            android:exported="true"
+            tools:node="replace">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

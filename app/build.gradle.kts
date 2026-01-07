@@ -15,7 +15,7 @@ android {
         applicationId = "no.solver.solverappdemo"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
+        versionCode = 4
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -127,6 +127,9 @@ dependencies {
 
     // Browser Custom Tabs (for Vipps OAuth)
     implementation(libs.browser)
+
+    // AppAuth (OAuth library for Vipps - handles web fallback automatically)
+    implementation(libs.appauth)
 
     // Image Loading
     implementation(libs.coil.compose)

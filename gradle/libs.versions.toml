@@ -31,6 +31,9 @@ msal = "5.4.0"
 # Browser Custom Tabs
 browser = "1.8.0"
 
+# AppAuth (OAuth library for Vipps - handles web fallback automatically)
+appauth = "0.11.1"
+
 # Image Loading
 coil = "2.7.0"
 
@@ -79,6 +82,9 @@ msal = { group = "com.microsoft.identity.client", name = "msal", version.ref = "
 
 # Browser Custom Tabs
 browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
+
+# AppAuth
+appauth = { group = "net.openid", name = "appauth", version.ref = "appauth" }
 
 # Image Loading
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }

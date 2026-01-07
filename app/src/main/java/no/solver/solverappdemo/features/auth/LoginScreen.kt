@@ -39,8 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.browser.customtabs.CustomTabsIntent
-import androidx.core.net.toUri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.hilt.navigation.compose.hiltViewModel
 import no.solver.solverappdemo.R
 import no.solver.solverappdemo.core.config.AuthProvider
@@ -62,6 +62,13 @@ fun LoginScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val snackbarHostState = remember { SnackbarHostState() }
+    
+    // AppAuth activity result launcher for Vipps OAuth
+    val vippsAuthLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        viewModel.handleVippsAuthResult(result.data)
+    }
 
     LaunchedEffect(isAuthenticated) {
         if (isAuthenticated) {
@@ -133,10 +140,9 @@ fun LoginScreen(
                 },
                 onVippsSignIn = {
                     activity?.let { act ->
-                        viewModel.signInWithVipps(act) { authUri ->
-                            // Launch Vipps OAuth in Custom Tab
-                            val customTabsIntent = CustomTabsIntent.Builder().build()
-                            customTabsIntent.launchUrl(act, authUri)
+                        viewModel.signInWithVipps(act) { intent, _ ->
+                            // Launch Vipps OAuth via AppAuth (handles web fallback automatically)
+                            vippsAuthLauncher.launch(intent)
                         }
                     }
                 },
