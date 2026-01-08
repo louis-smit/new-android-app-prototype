@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.config.APIConfiguration
 import no.solver.solverappdemo.core.network.ConnectivityObserver
 import no.solver.solverappdemo.core.network.NetworkStatus
+import no.solver.solverappdemo.core.storage.FavouritesStore
 import no.solver.solverappdemo.data.models.SolverObject
 import no.solver.solverappdemo.data.repositories.ObjectsLoadResult
 import no.solver.solverappdemo.data.repositories.OfflineFirstObjectsRepository
@@ -39,7 +40,8 @@ sealed class ObjectsUiState {
 class ObjectsViewModel @Inject constructor(
     private val offlineFirstRepository: OfflineFirstObjectsRepository,
     private val sessionManager: SessionManager,
-    private val connectivityObserver: ConnectivityObserver
+    private val connectivityObserver: ConnectivityObserver,
+    private val favouritesStore: FavouritesStore
 ) : ViewModel() {
 
     companion object {
@@ -100,6 +102,25 @@ class ObjectsViewModel @Inject constructor(
     private val _lastSyncedAt = MutableStateFlow<Long?>(null)
     val lastSyncedAt: StateFlow<Long?> = _lastSyncedAt.asStateFlow()
 
+    private val _selectedTab = MutableStateFlow(0) // 0 = All, 1 = Favourites
+    val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
+
+    val favourites: StateFlow<List<SolverObject>> = favouritesStore.favourites
+
+    private val _isFavouritesLoading = MutableStateFlow(false)
+    val isFavouritesLoading: StateFlow<Boolean> = _isFavouritesLoading.asStateFlow()
+
+    val filteredFavourites: StateFlow<List<SolverObject>> = combine(
+        favouritesStore.favourites,
+        _searchQuery.debounce(SEARCH_DEBOUNCE_MS)
+    ) { favs, query ->
+        filterAndSortObjects(favs, query)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = emptyList()
+    )
+
     val filteredObjects: StateFlow<List<SolverObject>> = combine(
         _allObjects,
         _searchQuery.debounce(SEARCH_DEBOUNCE_MS)
@@ -113,7 +134,21 @@ class ObjectsViewModel @Inject constructor(
 
     init {
         loadObjects()
+        loadFavourites()
         observeConnectivityChanges()
+    }
+
+    fun setSelectedTab(tab: Int) {
+        _selectedTab.value = tab
+    }
+
+    fun loadFavourites() {
+        viewModelScope.launch {
+            Log.d(TAG, "Loading favourites")
+            _isFavouritesLoading.value = true
+            favouritesStore.loadFavourites()
+            _isFavouritesLoading.value = false
+        }
     }
 
     private fun observeConnectivityChanges() {

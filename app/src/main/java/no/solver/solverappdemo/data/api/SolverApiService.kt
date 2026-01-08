@@ -19,6 +19,25 @@ interface SolverApiService {
         @Path("objectId") objectId: Int
     ): Response<SolverObjectDTO>
 
+    // Favourites
+    @GET("api/User/Favourite")
+    suspend fun getFavourites(): Response<List<SolverObjectDTO>>
+
+    @GET("api/User/Favourite/Object/{objectId}/IsFavourite")
+    suspend fun isFavourite(
+        @Path("objectId") objectId: Int
+    ): Response<Boolean>
+
+    @retrofit2.http.POST("api/User/Favourite/Object/{objectId}")
+    suspend fun addFavourite(
+        @Path("objectId") objectId: Int
+    ): Response<Unit>
+
+    @retrofit2.http.DELETE("api/User/Favourite/Object/{objectId}")
+    suspend fun removeFavourite(
+        @Path("objectId") objectId: Int
+    ): Response<Unit>
+
     @PUT("api/Object/{objectId}/Execute/{command}")
     suspend fun executeCommand(
         @Path("objectId") objectId: Int,

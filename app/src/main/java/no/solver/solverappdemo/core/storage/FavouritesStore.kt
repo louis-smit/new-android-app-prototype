@@ -1,34 +1,24 @@
 package no.solver.solverappdemo.core.storage
 
-import android.content.Context
 import android.util.Log
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringSetPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
+import no.solver.solverappdemo.core.network.ApiException
 import no.solver.solverappdemo.core.network.ApiResult
+import no.solver.solverappdemo.data.api.ApiClientManager
 import no.solver.solverappdemo.data.models.SolverObject
-import no.solver.solverappdemo.data.repositories.ObjectsRepository
+import no.solver.solverappdemo.features.auth.services.SessionManager
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private val Context.favouritesDataStore: DataStore<Preferences> by preferencesDataStore(name = "favourites")
-
 @Singleton
 class FavouritesStore @Inject constructor(
-    @ApplicationContext private val context: Context
+    private val apiClientManager: ApiClientManager,
+    private val sessionManager: SessionManager
 ) {
     companion object {
         private const val TAG = "FavouritesStore"
-        private val FAVOURITE_IDS_KEY = stringSetPreferencesKey("favourite_ids")
     }
 
     private val _favourites = MutableStateFlow<List<SolverObject>>(emptyList())
@@ -40,72 +30,106 @@ class FavouritesStore @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    val favouriteIdsFlow: Flow<Set<Int>> = context.favouritesDataStore.data.map { preferences ->
-        preferences[FAVOURITE_IDS_KEY]?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
-    }
-
-    suspend fun loadFavourites(repository: ObjectsRepository) {
+    suspend fun loadFavourites(): ApiResult<List<SolverObject>> {
         _isLoading.value = true
         try {
-            val ids = context.favouritesDataStore.data.first()[FAVOURITE_IDS_KEY]
-                ?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
-            _favouriteIds.value = ids
+            val session = sessionManager.getCurrentSession()
+                ?: return ApiResult.Error(ApiException.Unauthorized("No active session"))
 
-            if (ids.isEmpty()) {
-                _favourites.value = emptyList()
-                return
-            }
+            val apiService = apiClientManager.getApiService(
+                environment = session.environment,
+                provider = session.provider
+            )
 
-            when (val result = repository.getUserObjects()) {
-                is ApiResult.Success -> {
-                    val favouriteObjects = result.data
-                        .filter { ids.contains(it.id) }
-                        .sortedBy { it.name.lowercase() }
-                    _favourites.value = favouriteObjects
-                    Log.d(TAG, "Loaded ${favouriteObjects.size} favourite objects")
-                }
-                is ApiResult.Error -> {
-                    Log.e(TAG, "Failed to load favourites: ${result.exception.message}")
-                }
+            val response = apiService.getFavourites()
+
+            return if (response.isSuccessful) {
+                val objects = response.body()?.map { it.toDomainModel() } ?: emptyList()
+                val sortedObjects = objects.sortedBy { it.name.lowercase() }
+                _favourites.value = sortedObjects
+                _favouriteIds.value = objects.map { it.id }.toSet()
+                Log.d(TAG, "Loaded ${objects.size} favourites from API")
+                ApiResult.Success(sortedObjects)
+            } else {
+                val error = ApiException.fromHttpCode(response.code(), response.message())
+                Log.e(TAG, "Failed to load favourites: ${error.message}")
+                ApiResult.Error(error)
             }
         } finally {
             _isLoading.value = false
         }
     }
 
-    suspend fun addFavourite(objectId: Int) {
-        Log.d(TAG, "Adding favourite: $objectId")
-        context.favouritesDataStore.edit { preferences ->
-            val currentIds = preferences[FAVOURITE_IDS_KEY]?.toMutableSet() ?: mutableSetOf()
-            currentIds.add(objectId.toString())
-            preferences[FAVOURITE_IDS_KEY] = currentIds
+    suspend fun isFavourite(objectId: Int): ApiResult<Boolean> {
+        val session = sessionManager.getCurrentSession()
+            ?: return ApiResult.Error(ApiException.Unauthorized("No active session"))
+
+        val apiService = apiClientManager.getApiService(
+            environment = session.environment,
+            provider = session.provider
+        )
+
+        return try {
+            val response = apiService.isFavourite(objectId)
+            if (response.isSuccessful) {
+                ApiResult.Success(response.body() ?: false)
+            } else {
+                ApiResult.Error(ApiException.fromHttpCode(response.code(), response.message()))
+            }
+        } catch (e: Exception) {
+            ApiResult.Error(ApiException.Unknown(e.message ?: "Unknown error"))
         }
-        _favouriteIds.value = _favouriteIds.value + objectId
     }
 
-    suspend fun removeFavourite(objectId: Int) {
-        Log.d(TAG, "Removing favourite: $objectId")
-        context.favouritesDataStore.edit { preferences ->
-            val currentIds = preferences[FAVOURITE_IDS_KEY]?.toMutableSet() ?: mutableSetOf()
-            currentIds.remove(objectId.toString())
-            preferences[FAVOURITE_IDS_KEY] = currentIds
+    suspend fun addFavourite(objectId: Int): ApiResult<Unit> {
+        val session = sessionManager.getCurrentSession()
+            ?: return ApiResult.Error(ApiException.Unauthorized("No active session"))
+
+        val apiService = apiClientManager.getApiService(
+            environment = session.environment,
+            provider = session.provider
+        )
+
+        return try {
+            val response = apiService.addFavourite(objectId)
+            if (response.isSuccessful) {
+                Log.d(TAG, "Added favourite: $objectId")
+                _favouriteIds.value = _favouriteIds.value + objectId
+                ApiResult.Success(Unit)
+            } else {
+                ApiResult.Error(ApiException.fromHttpCode(response.code(), response.message()))
+            }
+        } catch (e: Exception) {
+            ApiResult.Error(ApiException.Unknown(e.message ?: "Unknown error"))
         }
-        _favouriteIds.value = _favouriteIds.value - objectId
-        _favourites.value = _favourites.value.filter { it.id != objectId }
     }
 
-    fun isFavourite(objectId: Int): Boolean {
+    suspend fun removeFavourite(objectId: Int): ApiResult<Unit> {
+        val session = sessionManager.getCurrentSession()
+            ?: return ApiResult.Error(ApiException.Unauthorized("No active session"))
+
+        val apiService = apiClientManager.getApiService(
+            environment = session.environment,
+            provider = session.provider
+        )
+
+        return try {
+            val response = apiService.removeFavourite(objectId)
+            if (response.isSuccessful) {
+                Log.d(TAG, "Removed favourite: $objectId")
+                _favouriteIds.value = _favouriteIds.value - objectId
+                _favourites.value = _favourites.value.filter { it.id != objectId }
+                ApiResult.Success(Unit)
+            } else {
+                ApiResult.Error(ApiException.fromHttpCode(response.code(), response.message()))
+            }
+        } catch (e: Exception) {
+            ApiResult.Error(ApiException.Unknown(e.message ?: "Unknown error"))
+        }
+    }
+
+    fun isFavouriteLocal(objectId: Int): Boolean {
         return _favouriteIds.value.contains(objectId)
-    }
-
-    suspend fun toggleFavourite(objectId: Int): Boolean {
-        return if (isFavourite(objectId)) {
-            removeFavourite(objectId)
-            false
-        } else {
-            addFavourite(objectId)
-            true
-        }
     }
 
     fun applyOptimisticAdd(obj: SolverObject) {

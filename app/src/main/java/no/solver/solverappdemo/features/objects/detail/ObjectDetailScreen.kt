@@ -1239,12 +1239,6 @@ private fun ObjectInfoSheetContent(
             .padding(bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = "Info",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-
         val htmlContent = information?.htmlContent
         if (htmlContent.isNullOrBlank()) {
             Text(
@@ -1266,9 +1260,6 @@ private fun HtmlContent(
     html: String,
     modifier: Modifier = Modifier
 ) {
-    val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
-    val textColor = if (isDarkTheme) "#FFFFFF" else "#000000"
-    
     android.view.ViewGroup.LayoutParams.MATCH_PARENT.let { matchParent ->
         androidx.compose.ui.viewinterop.AndroidView(
             factory = { ctx ->
@@ -1288,24 +1279,7 @@ private fun HtmlContent(
                 }
             },
             update = { webView ->
-                val styledHtml = """
-                    <html>
-                    <head>
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <style>
-                    body {
-                        font-family: -apple-system, Roboto, sans-serif;
-                        font-size: 16px;
-                        margin: 0;
-                        padding: 0;
-                        color: $textColor;
-                    }
-                    </style>
-                    </head>
-                    <body>$html</body>
-                    </html>
-                """.trimIndent()
-                webView.loadDataWithBaseURL(null, styledHtml, "text/html", "UTF-8", null)
+                webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
             },
             modifier = modifier
         )

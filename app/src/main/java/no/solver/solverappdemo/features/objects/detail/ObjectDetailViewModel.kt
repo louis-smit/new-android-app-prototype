@@ -311,16 +311,33 @@ class ObjectDetailViewModel @Inject constructor(
 
             val previousIds = favouritesStore.favouriteIds.value
             val previousFavourites = favouritesStore.favourites.value
-            val wasFavourite = favouritesStore.isFavourite(obj.id)
+            val wasFavourite = favouritesStore.isFavouriteLocal(obj.id)
 
+            // Optimistic update
             if (wasFavourite) {
                 favouritesStore.applyOptimisticRemove(obj.id)
             } else {
                 favouritesStore.applyOptimisticAdd(obj)
             }
 
-            val nowFavourite = favouritesStore.toggleFavourite(obj.id)
-            Log.i(TAG, "Favourite toggled: $wasFavourite -> $nowFavourite")
+            // Make API call
+            val result = if (wasFavourite) {
+                favouritesStore.removeFavourite(obj.id)
+            } else {
+                favouritesStore.addFavourite(obj.id)
+            }
+
+            when (result) {
+                is ApiResult.Success -> {
+                    Log.i(TAG, "Favourite toggled successfully: $wasFavourite -> ${!wasFavourite}")
+                }
+                is ApiResult.Error -> {
+                    Log.e(TAG, "Failed to toggle favourite: ${result.exception.message}")
+                    // Rollback on error
+                    favouritesStore.rollback(previousIds, previousFavourites)
+                    _commandError.value = "Failed to update favourite"
+                }
+            }
         }
     }
 
