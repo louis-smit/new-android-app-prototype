@@ -20,8 +20,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -55,8 +62,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.content.Intent
+import android.net.Uri
 import no.solver.solverappdemo.R
 import no.solver.solverappdemo.data.models.Command
 import no.solver.solverappdemo.data.models.ContextItem
@@ -85,8 +95,13 @@ fun ObjectDetailScreen(
     val commandInput by viewModel.commandInput.collectAsState()
     val showStatusSheet by viewModel.showStatusSheet.collectAsState()
     val statusSheetResponse by viewModel.statusSheetResponse.collectAsState()
+    val showDetailsSheet by viewModel.showDetailsSheet.collectAsState()
+    val isFavourite by viewModel.isFavourite.collectAsState()
+    val showInfoSheet by viewModel.showInfoSheet.collectAsState()
 
+    var showOverflowMenu by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     // Show error as snackbar
     LaunchedEffect(commandError) {
@@ -119,6 +134,97 @@ fun ObjectDetailScreen(
                             contentDescription = "Refresh"
                         )
                     }
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More options"
+                            )
+                        }
+                        val currentObject = (uiState as? ObjectDetailUiState.Success)?.solverObject
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(if (isFavourite) "Remove from Favourites" else "Add to Favourites") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.toggleFavourite()
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (isFavourite) Icons.Filled.Star else Icons.Outlined.Star,
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                            if (currentObject?.hasValidLocation == true) {
+                                DropdownMenuItem(
+                                    text = { Text("Open in Maps") },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        currentObject.latitude?.let { lat ->
+                                            currentObject.longitude?.let { lon ->
+                                                val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(${Uri.encode(currentObject.name)})")
+                                                val intent = Intent(Intent.ACTION_VIEW, uri)
+                                                context.startActivity(intent)
+                                            }
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_location),
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                            }
+                            if (currentObject?.hasSubscription == true) {
+                                DropdownMenuItem(
+                                    text = { Text("Subscribe") },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.handleExplicitSubscription()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_payment),
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                            }
+                            if (currentObject?.information?.hasValidHtmlContent == true) {
+                                DropdownMenuItem(
+                                    text = { Text("Info") },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.showInfoSheet()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_info),
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Details") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.showDetailsSheet()
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_info),
+                                        contentDescription = null
+                                    )
+                                }
+                            )
+                        }
+                    }
                 }
             )
         },
@@ -142,6 +248,11 @@ fun ObjectDetailScreen(
                         executingCommandId = executingCommandId,
                         onCommandClick = { command ->
                             viewModel.handleCommand(command)
+                        },
+                        onOpenInMaps = { lat, lon, name ->
+                            val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(${Uri.encode(name)})")
+                            val intent = Intent(Intent.ACTION_VIEW, uri)
+                            context.startActivity(intent)
                         }
                     )
                 }
@@ -188,6 +299,32 @@ fun ObjectDetailScreen(
             )
         }
     }
+
+    // Details Bottom Sheet
+    if (showDetailsSheet) {
+        val sheetState = rememberModalBottomSheetState()
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.dismissDetailsSheet() },
+            sheetState = sheetState
+        ) {
+            ObjectDetailsSheetContent(
+                solverObject = viewModel.solverObject
+            )
+        }
+    }
+
+    // Info Bottom Sheet (HTML Content)
+    if (showInfoSheet) {
+        val sheetState = rememberModalBottomSheetState()
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.dismissInfoSheet() },
+            sheetState = sheetState
+        ) {
+            ObjectInfoSheetContent(
+                information = viewModel.solverObject?.information
+            )
+        }
+    }
 }
 
 @Composable
@@ -196,6 +333,7 @@ private fun ObjectDetailContent(
     baseUrl: String,
     executingCommandId: String?,
     onCommandClick: (Command) -> Unit,
+    onOpenInMaps: (Double, Double, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -210,7 +348,10 @@ private fun ObjectDetailContent(
             baseUrl = baseUrl
         )
 
-        ObjectInfoCard(solverObject = solverObject)
+        ObjectInfoCard(
+            solverObject = solverObject,
+            onOpenInMaps = onOpenInMaps
+        )
 
         CommandsCard(
             commands = solverObject.getCommands(),
@@ -308,6 +449,7 @@ private fun StatusBadge(
 @Composable
 private fun ObjectInfoCard(
     solverObject: SolverObject,
+    onOpenInMaps: (Double, Double, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
@@ -339,11 +481,14 @@ private fun ObjectInfoCard(
                 DetailRow(label = "Tenant", value = tenant)
             }
 
-            if (solverObject.latitude != null && solverObject.longitude != null) {
+            if (solverObject.hasValidLocation) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                DetailRow(
+                LocationRow(
                     label = "Location",
-                    value = String.format("%.4f, %.4f", solverObject.latitude, solverObject.longitude)
+                    latitude = solverObject.latitude!!,
+                    longitude = solverObject.longitude!!,
+                    objectName = solverObject.name,
+                    onOpenInMaps = onOpenInMaps
                 )
             }
         }
@@ -369,6 +514,34 @@ private fun DetailRow(
             text = value,
             style = MaterialTheme.typography.bodyMedium
         )
+    }
+}
+
+@Composable
+private fun LocationRow(
+    label: String,
+    latitude: Double,
+    longitude: Double,
+    objectName: String,
+    onOpenInMaps: (Double, Double, String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TextButton(
+            onClick = { onOpenInMaps(latitude, longitude, objectName) },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+        ) {
+            Text(text = "Open in Maps")
+        }
     }
 }
 
@@ -837,7 +1010,8 @@ private fun ObjectInfoCardPreview() {
                 online = true,
                 active = true,
                 tenantName = "Solver AS"
-            )
+            ),
+            onOpenInMaps = { _, _, _ -> }
         )
     }
 }
@@ -901,6 +1075,239 @@ private fun ErrorContentPreview() {
         ErrorContent(
             message = "Network connection failed. Please check your internet connection.",
             onRetry = {}
+        )
+    }
+}
+
+@Composable
+private fun ObjectDetailsSheetContent(
+    solverObject: SolverObject?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Object Details",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        if (solverObject == null) {
+            Text(
+                text = "No object data available",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            return@Column
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 0.dp
+        ) {
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                DetailsRow(label = "ID", value = solverObject.id.toString())
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                
+                DetailsRow(label = "Name", value = solverObject.name)
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                
+                DetailsRow(label = "Object Type ID", value = solverObject.objectTypeId.toString())
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                
+                DetailsRow(label = "Status", value = solverObject.status.ifEmpty { "—" })
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                
+                DetailsRow(label = "Online", value = if (solverObject.online) "Yes" else "No")
+                
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                
+                DetailsRow(label = "Active", value = if (solverObject.active) "Yes" else "No")
+                
+                solverObject.tenantName?.let { tenant ->
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    DetailsRow(label = "Tenant", value = tenant)
+                }
+                
+                if (solverObject.hasValidLocation) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    DetailsRow(
+                        label = "Location",
+                        value = "${solverObject.latitude}, ${solverObject.longitude}"
+                    )
+                }
+                
+                solverObject.hasSubscription?.let { hasSub ->
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    DetailsRow(label = "Has Subscription", value = if (hasSub) "Yes" else "No")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailsRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun ObjectDetailsSheetContentPreview() {
+    SolverAppTheme {
+        ObjectDetailsSheetContent(
+            solverObject = SolverObject(
+                id = 123,
+                name = "Meeting Room A",
+                objectTypeId = 1,
+                status = "Available",
+                latitude = 59.9139,
+                longitude = 10.7522,
+                online = true,
+                active = true,
+                tenantName = "Solver AS"
+            )
+        )
+    }
+}
+
+@Composable
+private fun ObjectInfoSheetContent(
+    information: no.solver.solverappdemo.data.models.ObjectInformation?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Info",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        val htmlContent = information?.htmlContent
+        if (htmlContent.isNullOrBlank()) {
+            Text(
+                text = "No information available",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            HtmlContent(
+                html = htmlContent,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun HtmlContent(
+    html: String,
+    modifier: Modifier = Modifier
+) {
+    val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
+    val textColor = if (isDarkTheme) "#FFFFFF" else "#000000"
+    
+    android.view.ViewGroup.LayoutParams.MATCH_PARENT.let { matchParent ->
+        androidx.compose.ui.viewinterop.AndroidView(
+            factory = { ctx ->
+                android.webkit.WebView(ctx).apply {
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        matchParent,
+                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    settings.apply {
+                        @Suppress("SetJavaScriptEnabled")
+                        javaScriptEnabled = false
+                        loadWithOverviewMode = true
+                        useWideViewPort = true
+                    }
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    isVerticalScrollBarEnabled = false
+                }
+            },
+            update = { webView ->
+                val styledHtml = """
+                    <html>
+                    <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <style>
+                    body {
+                        font-family: -apple-system, Roboto, sans-serif;
+                        font-size: 16px;
+                        margin: 0;
+                        padding: 0;
+                        color: $textColor;
+                    }
+                    </style>
+                    </head>
+                    <body>$html</body>
+                    </html>
+                """.trimIndent()
+                webView.loadDataWithBaseURL(null, styledHtml, "text/html", "UTF-8", null)
+            },
+            modifier = modifier
         )
     }
 }

@@ -16,7 +16,8 @@ data class SolverObject(
     val tenantName: String? = null,
     val commandMap: CommandMapping? = null,
     val userAccess: Boolean? = null,
-    val hasSubscription: Boolean? = null
+    val hasSubscription: Boolean? = null,
+    val information: ObjectInformation? = null
 ) {
     val isAvailable: Boolean
         get() = active && online
@@ -32,6 +33,13 @@ data class SolverObject(
 
     val statusColor: ObjectStatusColor
         get() = ObjectStatusColor.fromStatus(status, online, active)
+
+    /**
+     * Returns true if the object has a valid location.
+     * Treats 0,0 coordinates as no location (API returns 0,0 for objects without location).
+     */
+    val hasValidLocation: Boolean
+        get() = latitude != null && longitude != null && !(latitude == 0.0 && longitude == 0.0)
 
     fun getCommands(locale: String = "en-US"): List<Command> {
         val hasAccess = userAccess ?: false
@@ -81,7 +89,8 @@ data class SolverObjectDTO(
     val tenantName: String? = null,
     val commandMap: CommandMapping? = null,
     val userAccess: Boolean? = null,
-    val hasSubscription: Boolean? = null
+    val hasSubscription: Boolean? = null,
+    val information: ObjectInformation? = null
 ) {
     fun toDomainModel(): SolverObject {
         val isOnline = state?.let { it == 1 } ?: (online ?: true)
@@ -99,7 +108,24 @@ data class SolverObjectDTO(
             tenantName = tenantName,
             commandMap = commandMap,
             userAccess = userAccess,
-            hasSubscription = hasSubscription
+            hasSubscription = hasSubscription,
+            information = information
         )
     }
 }
+
+@Serializable
+data class ObjectInformation(
+    val description: String? = null,
+    val htmlContent: String? = null,
+    val attributes: List<ObjectAttribute>? = null
+) {
+    val hasValidHtmlContent: Boolean
+        get() = !htmlContent.isNullOrBlank()
+}
+
+@Serializable
+data class ObjectAttribute(
+    val key: String? = null,
+    val value: String? = null
+)

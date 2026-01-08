@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.config.APIConfiguration
 import no.solver.solverappdemo.core.network.ApiResult
+import no.solver.solverappdemo.core.storage.FavouritesStore
 import no.solver.solverappdemo.data.models.Command
 import no.solver.solverappdemo.data.models.ExecuteResponse
 import no.solver.solverappdemo.data.models.SolverObject
@@ -36,7 +37,8 @@ sealed class ObjectDetailUiState {
 class ObjectDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val objectsRepository: ObjectsRepository,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val favouritesStore: FavouritesStore
 ) : ViewModel() {
 
     companion object {
@@ -84,6 +86,31 @@ class ObjectDetailViewModel @Inject constructor(
 
     private val _statusSheetResponse = MutableStateFlow<ExecuteResponse?>(null)
     val statusSheetResponse: StateFlow<ExecuteResponse?> = _statusSheetResponse.asStateFlow()
+
+    // Details sheet state
+    private val _showDetailsSheet = MutableStateFlow(false)
+    val showDetailsSheet: StateFlow<Boolean> = _showDetailsSheet.asStateFlow()
+
+    // Info sheet state (HTML content)
+    private val _showInfoSheet = MutableStateFlow(false)
+    val showInfoSheet: StateFlow<Boolean> = _showInfoSheet.asStateFlow()
+
+    // Favourite state
+    val isFavourite: StateFlow<Boolean> = favouritesStore.favouriteIds
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptySet()
+        )
+        .let { idsFlow ->
+            combine(idsFlow, MutableStateFlow(objectId)) { ids, objId ->
+                ids.contains(objId)
+            }.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = false
+            )
+        }
 
     // Middleware instances
     val paymentMiddleware = PaymentMiddleware()
@@ -273,5 +300,49 @@ class ObjectDetailViewModel @Inject constructor(
 
     fun dismissCommandError() {
         _commandError.value = null
+    }
+
+    // MARK: - Menu Actions
+
+    fun toggleFavourite() {
+        val obj = solverObject ?: return
+        viewModelScope.launch {
+            Log.i(TAG, "Toggling favourite for object ${obj.id}")
+
+            val previousIds = favouritesStore.favouriteIds.value
+            val previousFavourites = favouritesStore.favourites.value
+            val wasFavourite = favouritesStore.isFavourite(obj.id)
+
+            if (wasFavourite) {
+                favouritesStore.applyOptimisticRemove(obj.id)
+            } else {
+                favouritesStore.applyOptimisticAdd(obj)
+            }
+
+            val nowFavourite = favouritesStore.toggleFavourite(obj.id)
+            Log.i(TAG, "Favourite toggled: $wasFavourite -> $nowFavourite")
+        }
+    }
+
+    fun showDetailsSheet() {
+        _showDetailsSheet.value = true
+    }
+
+    fun dismissDetailsSheet() {
+        _showDetailsSheet.value = false
+    }
+
+    fun showInfoSheet() {
+        _showInfoSheet.value = true
+    }
+
+    fun dismissInfoSheet() {
+        _showInfoSheet.value = false
+    }
+
+    fun handleExplicitSubscription() {
+        val obj = solverObject ?: return
+        Log.i(TAG, "Handling explicit subscription for object ${obj.id}")
+        subscriptionMiddleware.handleSubscriptionSelected("explicit")
     }
 }

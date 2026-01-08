@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
@@ -36,6 +37,7 @@ import no.solver.solverappdemo.data.models.SolverObject
 import no.solver.solverappdemo.features.auth.LoginScreen
 import no.solver.solverappdemo.features.auth.LoginViewModel
 import no.solver.solverappdemo.features.auth.MobileLoginScreen
+import no.solver.solverappdemo.features.favourites.FavouritesScreen
 import no.solver.solverappdemo.features.objects.ObjectsScreen
 import no.solver.solverappdemo.features.objects.detail.ObjectDetailScreen
 
@@ -182,6 +184,7 @@ enum class MainDestination(
     val icon: ImageVector
 ) {
     OBJECTS("Objects", Icons.Default.Home),
+    FAVOURITES("Favourites", Icons.Default.Star),
     FIND("Find", Icons.Default.Search),
     ACCOUNTS("Accounts", Icons.Default.AccountCircle),
     MORE("More", Icons.Default.MoreVert)
@@ -214,6 +217,11 @@ fun MainScreen(
         when (currentDestination) {
             MainDestination.OBJECTS -> {
                 ObjectsScreen(
+                    onObjectClick = onObjectClick
+                )
+            }
+            MainDestination.FAVOURITES -> {
+                FavouritesScreen(
                     onObjectClick = onObjectClick
                 )
             }
