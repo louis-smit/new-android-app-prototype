@@ -38,6 +38,7 @@ import no.solver.solverappdemo.features.auth.LoginScreen
 import no.solver.solverappdemo.features.auth.LoginViewModel
 import no.solver.solverappdemo.features.auth.MobileLoginScreen
 
+import no.solver.solverappdemo.features.find.FindScreen
 import no.solver.solverappdemo.features.objects.ObjectsScreen
 import no.solver.solverappdemo.features.objects.detail.ObjectDetailScreen
 
@@ -220,7 +221,9 @@ fun MainScreen(
                 )
             }
             MainDestination.FIND -> {
-                PlaceholderScreen(title = "Find")
+                FindScreen(
+                    onObjectClick = onObjectClick
+                )
             }
             MainDestination.ACCOUNTS -> {
                 AccountsPlaceholderScreen(onSignOut = onSignOut)

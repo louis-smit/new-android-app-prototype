@@ -93,4 +93,24 @@ class ObjectsRepository @Inject constructor(
             }
         }
     }
+
+    suspend fun searchObjects(query: String): ApiResult<List<SolverObject>> {
+        return ApiResult.runCatching {
+            val session = sessionManager.getCurrentSession()
+                ?: throw ApiException.Unauthorized("No active session")
+
+            val apiService = apiClientManager.getApiService(
+                environment = session.environment,
+                provider = session.provider
+            )
+
+            val response = apiService.searchObjects(query)
+
+            if (response.isSuccessful) {
+                response.body()?.map { it.toDomainModel() } ?: emptyList()
+            } else {
+                throw ApiException.fromHttpCode(response.code(), response.message())
+            }
+        }
+    }
 }
