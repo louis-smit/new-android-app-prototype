@@ -51,6 +51,12 @@ interface SolverApiService {
         @Path("input") input: String
     ): Response<ExecuteResponse>
 
+    // Search
+    @GET("api/Object/UserObjects/v2/Search")
+    suspend fun searchObjects(
+        @retrofit2.http.Query("query") query: String
+    ): Response<List<SolverObjectDTO>>
+
     // TODO: Add location variants when implementing geofence features
     // @PUT("api/Object/{objectId}/Execute/{command}")
     // suspend fun executeCommandWithLocation(..., @Body location: LocationData)

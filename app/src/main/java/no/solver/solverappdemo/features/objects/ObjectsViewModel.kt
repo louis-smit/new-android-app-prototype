@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.config.APIConfiguration
@@ -50,20 +51,12 @@ class ObjectsViewModel @Inject constructor(
     }
 
     val isOffline: StateFlow<Boolean> = connectivityObserver.networkStatus
+        .map { status -> status == NetworkStatus.Unavailable }
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            initialValue = if (connectivityObserver.isConnected()) NetworkStatus.Available else NetworkStatus.Unavailable
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = !connectivityObserver.isConnected()
         )
-        .let { statusFlow ->
-            combine(statusFlow, MutableStateFlow(Unit)) { status, _ ->
-                status == NetworkStatus.Unavailable
-            }.stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.Eagerly,
-                initialValue = !connectivityObserver.isConnected()
-            )
-        }
 
     val apiBaseUrl: StateFlow<String> = sessionManager.currentSessionFlow
         .stateIn(

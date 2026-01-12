@@ -32,7 +32,7 @@ class FavouritesStore @Inject constructor(
 
     suspend fun loadFavourites(): ApiResult<List<SolverObject>> {
         _isLoading.value = true
-        try {
+        return try {
             val session = sessionManager.getCurrentSession()
                 ?: return ApiResult.Error(ApiException.Unauthorized("No active session"))
 
@@ -43,7 +43,7 @@ class FavouritesStore @Inject constructor(
 
             val response = apiService.getFavourites()
 
-            return if (response.isSuccessful) {
+            if (response.isSuccessful) {
                 val objects = response.body()?.map { it.toDomainModel() } ?: emptyList()
                 val sortedObjects = objects.sortedBy { it.name.lowercase() }
                 _favourites.value = sortedObjects
@@ -55,6 +55,9 @@ class FavouritesStore @Inject constructor(
                 Log.e(TAG, "Failed to load favourites: ${error.message}")
                 ApiResult.Error(error)
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Network error loading favourites: ${e.message}")
+            ApiResult.Error(ApiException.Network(e.message ?: "Network error"))
         } finally {
             _isLoading.value = false
         }
