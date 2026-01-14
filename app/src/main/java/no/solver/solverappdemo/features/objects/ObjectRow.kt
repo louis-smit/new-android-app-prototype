@@ -1,5 +1,6 @@
 package no.solver.solverappdemo.features.objects
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,7 +35,8 @@ fun ObjectRow(
     solverObject: SolverObject,
     baseUrl: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    cachedIcon: Bitmap? = null
 ) {
     Column(modifier = modifier) {
         Row(
@@ -47,6 +49,7 @@ fun ObjectRow(
             ObjectIcon(
                 objectTypeId = solverObject.objectTypeId,
                 baseUrl = baseUrl,
+                cachedBitmap = cachedIcon,
                 size = 32.dp
             )
 

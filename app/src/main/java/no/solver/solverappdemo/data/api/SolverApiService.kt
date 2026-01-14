@@ -3,6 +3,7 @@ package no.solver.solverappdemo.data.api
 import no.solver.solverappdemo.data.models.CommandExecutionRequest
 import no.solver.solverappdemo.data.models.ExecuteResponse
 import no.solver.solverappdemo.data.models.ObjectLog
+import no.solver.solverappdemo.data.models.ResourceIcon
 import no.solver.solverappdemo.data.models.SolverObjectDTO
 import okhttp3.ResponseBody
 import retrofit2.Response
@@ -13,6 +14,10 @@ import retrofit2.http.PUT
 import retrofit2.http.Path
 
 interface SolverApiService {
+
+    // Resource Icons - fetch all icons in one request for pre-caching
+    @GET("api/Resource/Icons")
+    suspend fun getResourceIcons(): Response<List<ResourceIcon>>
 
     @GET("api/Object/UserObjects")
     suspend fun getUserObjects(): Response<List<SolverObjectDTO>>

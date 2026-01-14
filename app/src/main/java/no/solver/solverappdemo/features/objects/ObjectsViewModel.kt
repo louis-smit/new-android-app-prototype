@@ -1,5 +1,6 @@
 package no.solver.solverappdemo.features.objects
 
+import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import no.solver.solverappdemo.core.cache.IconCacheManager
 import no.solver.solverappdemo.core.config.APIConfiguration
 import no.solver.solverappdemo.core.network.ConnectivityObserver
 import no.solver.solverappdemo.core.network.NetworkStatus
@@ -42,7 +44,8 @@ class ObjectsViewModel @Inject constructor(
     private val offlineFirstRepository: OfflineFirstObjectsRepository,
     private val sessionManager: SessionManager,
     private val connectivityObserver: ConnectivityObserver,
-    private val favouritesStore: FavouritesStore
+    private val favouritesStore: FavouritesStore,
+    private val iconCacheManager: IconCacheManager
 ) : ViewModel() {
 
     companion object {
@@ -313,6 +316,14 @@ class ObjectsViewModel @Inject constructor(
                 available = objects.count { it.isAvailable }
             )
         }
+
+    /**
+     * Get a cached icon bitmap for the given object type ID.
+     * Returns null if not cached - the UI should fall back to network loading.
+     */
+    fun getCachedIcon(objectTypeId: Int): Bitmap? {
+        return iconCacheManager.getIcon(objectTypeId)
+    }
 }
 
 data class ObjectsStatistics(

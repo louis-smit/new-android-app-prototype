@@ -21,6 +21,7 @@ import no.solver.solverappdemo.features.auth.services.MicrosoftAuthService
 import no.solver.solverappdemo.features.auth.services.SessionManager
 import no.solver.solverappdemo.features.auth.services.VippsAuthException
 import no.solver.solverappdemo.features.auth.services.VippsAuthService
+import no.solver.solverappdemo.data.repositories.IconRepository
 import no.solver.solverappdemo.data.repositories.OfflineFirstObjectsRepository
 import javax.inject.Inject
 
@@ -37,7 +38,8 @@ class LoginViewModel @Inject constructor(
     private val microsoftAuthService: MicrosoftAuthService,
     private val vippsAuthService: VippsAuthService,
     private val sessionManager: SessionManager,
-    private val offlineFirstRepository: OfflineFirstObjectsRepository
+    private val offlineFirstRepository: OfflineFirstObjectsRepository,
+    private val iconRepository: IconRepository
 ) : ViewModel() {
 
     companion object {
@@ -87,6 +89,7 @@ class LoginViewModel @Inject constructor(
                 )
 
                 Log.d(TAG, "Microsoft sign-in successful")
+                prefetchIcons()
                 _uiState.value = LoginUiState.Success
             } catch (e: AuthCancelledException) {
                 Log.d(TAG, "Microsoft sign-in cancelled by user")
@@ -123,6 +126,7 @@ class LoginViewModel @Inject constructor(
                 )
 
                 Log.d(TAG, "Vipps sign-in successful")
+                prefetchIcons()
                 _uiState.value = LoginUiState.Success
             } catch (e: AuthCancelledException) {
                 Log.d(TAG, "Vipps sign-in cancelled by user")
@@ -169,6 +173,19 @@ class LoginViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = LoginUiState.Idle
+    }
+
+    /**
+     * Pre-fetch all object type icons in the background for smooth scrolling.
+     */
+    private fun prefetchIcons() {
+        viewModelScope.launch {
+            try {
+                iconRepository.prefetchIcons()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to prefetch icons", e)
+            }
+        }
     }
 
     fun signOut() {

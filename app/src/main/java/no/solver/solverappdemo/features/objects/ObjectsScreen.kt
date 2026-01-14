@@ -187,7 +187,8 @@ fun ObjectsScreen(
                                 ObjectsList(
                                     objects = filteredObjects,
                                     baseUrl = apiBaseUrl,
-                                    onObjectClick = onObjectClick
+                                    onObjectClick = onObjectClick,
+                                    getCachedIcon = { viewModel.getCachedIcon(it) }
                                 )
                             }
                             is ObjectsUiState.Empty -> {
@@ -214,7 +215,8 @@ fun ObjectsScreen(
                             ObjectsList(
                                 objects = filteredFavourites,
                                 baseUrl = apiBaseUrl,
-                                onObjectClick = onObjectClick
+                                onObjectClick = onObjectClick,
+                                getCachedIcon = { viewModel.getCachedIcon(it) }
                             )
                         }
                     }
@@ -229,7 +231,8 @@ private fun ObjectsList(
     objects: List<SolverObject>,
     baseUrl: String,
     onObjectClick: (SolverObject) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    getCachedIcon: (Int) -> android.graphics.Bitmap? = { null }
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize()
@@ -241,6 +244,7 @@ private fun ObjectsList(
             ObjectRow(
                 solverObject = obj,
                 baseUrl = baseUrl,
+                cachedIcon = getCachedIcon(obj.objectTypeId),
                 onClick = { onObjectClick(obj) }
             )
         }

@@ -30,3 +30,21 @@
 
 # OpenTelemetry
 -dontwarn io.opentelemetry.**
+
+# Danalock SDK dependencies (optional/legacy classes referenced by SDK)
+-dontwarn io.swagger.annotations.**
+-dontwarn org.jdeferred.**
+-dontwarn org.threeten.bp.**
+-dontwarn io.gsonfire.**
+
+# Old OkHttp 2.x classes (Danalock SDK uses legacy OkHttp)
+-dontwarn com.squareup.okhttp.**
+
+# Keep Danalock SDK classes
+-keep class com.danalock.** { *; }
+-keep class com.polycontrol.** { *; }
+-keep class com.poly_control.** { *; }
+
+# Masterlock SDK
+-keep class com.masterlock.** { *; }
+-dontwarn com.masterlock.**

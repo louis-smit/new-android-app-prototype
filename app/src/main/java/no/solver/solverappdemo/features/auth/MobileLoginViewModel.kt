@@ -20,6 +20,7 @@ import no.solver.solverappdemo.features.auth.services.MobileConfirmationInput
 import no.solver.solverappdemo.features.auth.services.MobileRegistrationInput
 import no.solver.solverappdemo.features.auth.services.RegisteredMobileUser
 import no.solver.solverappdemo.features.auth.services.SessionManager
+import no.solver.solverappdemo.data.repositories.IconRepository
 import javax.inject.Inject
 
 sealed class MobileLoginUiState {
@@ -33,7 +34,8 @@ sealed class MobileLoginUiState {
 @HiltViewModel
 class MobileLoginViewModel @Inject constructor(
     private val mobileAuthService: MobileAuthService,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val iconRepository: IconRepository
 ) : ViewModel() {
 
     companion object {
@@ -202,6 +204,7 @@ class MobileLoginViewModel @Inject constructor(
                 )
 
                 Log.i(TAG, "✅ Mobile login successful")
+                prefetchIcons()
                 _uiState.value = MobileLoginUiState.Success
 
             } catch (e: MobileAuthException) {
@@ -267,6 +270,19 @@ class MobileLoginViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "Resend failed: ${e.message}", e)
                 _uiState.value = MobileLoginUiState.Error("Failed to resend code. Please try again.")
+            }
+        }
+    }
+
+    /**
+     * Pre-fetch all object type icons in the background for smooth scrolling.
+     */
+    private fun prefetchIcons() {
+        viewModelScope.launch {
+            try {
+                iconRepository.prefetchIcons()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to prefetch icons", e)
             }
         }
     }
