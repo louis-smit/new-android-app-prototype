@@ -131,6 +131,10 @@ class MasterlockAdapter @Inject constructor(
     override suspend fun unlock(solverObject: SolverObject): Result<String> {
         Log.i(TAG, "🔵 Executing Masterlock unlock for object ${solverObject.id}")
 
+        // Stop polling before unlock to avoid scan conflicts
+        // The SDK only allows one scan at a time
+        stopPollingAndWait()
+
         // Get or fetch tokens
         val tokens = tokenCache.tokens(solverObject.id) ?: run {
             val fetchResult = fetchTokens(solverObject)
@@ -146,6 +150,7 @@ class MasterlockAdapter @Inject constructor(
         // Create MLProduct
         val product = MLProduct(tokens.deviceIdentifier, accessProfile, firmwareVersion)
         product.delegate = this
+        product.autoDisconnect = false
 
         return try {
             // Find device
@@ -168,11 +173,20 @@ class MasterlockAdapter @Inject constructor(
             )
 
             Log.i(TAG, "✅ Masterlock unlock succeeded")
+            
+            // Restart polling after successful unlock
+            delay(1000) // Brief delay before restarting polling
+            startPolling(solverObject)
+            
             Result.success("Masterlock unlocked successfully")
 
         } catch (e: Exception) {
             Log.e(TAG, "❌ Masterlock unlock failed: ${e.message}")
             disconnect(product)
+            
+            // Restart polling even on failure
+            startPolling(solverObject)
+            
             Result.failure(e)
         }
     }
@@ -206,6 +220,7 @@ class MasterlockAdapter @Inject constructor(
         // Create MLProduct
         val product = MLProduct(tokens.deviceIdentifier, accessProfile, firmwareVersion)
         product.delegate = this
+        product.autoDisconnect = false
 
         return try {
             isCheckInProgress = true
@@ -293,6 +308,8 @@ class MasterlockAdapter @Inject constructor(
         pollingJob = null
         currentObject = null
         reset()
+        // Give the SDK time to fully stop the scan before starting a new one
+        delay(500)
     }
 
     override fun parseTokens(response: ExecuteResponse, objectId: Int): SmartLockTokens? {
@@ -369,8 +386,10 @@ class MasterlockAdapter @Inject constructor(
     // MARK: - IMLLockScannerDelegate
 
     override fun bluetoothReady() {
-        Log.i(TAG, "Bluetooth ready")
-        mlSdk?.startScanning()
+        Log.i(TAG, "Bluetooth ready - SDK scanner service bound")
+        // Don't auto-scan here - we only scan when explicitly needed during findDevice()
+        // The old app scanned here to proactively discover locks, but that requires
+        // BLUETOOTH_SCAN permission which may not be granted yet
     }
 
     override fun bluetoothDown() {
@@ -382,13 +401,15 @@ class MasterlockAdapter @Inject constructor(
     }
 
     override fun shouldConnect(deviceId: String, rssi: Int): Boolean {
-        Log.i(TAG, "Checking if should connect to $deviceId")
-        return pendingProduct?.deviceId == deviceId
+        val shouldConnect = pendingProduct?.deviceId == deviceId
+        Log.i(TAG, "Checking if should connect to $deviceId: $shouldConnect (pending: ${pendingProduct?.deviceId})")
+        return shouldConnect
     }
 
     override fun productForDevice(deviceId: String): MLProduct? {
-        Log.i(TAG, "Getting product for device ID $deviceId")
-        return if (pendingProduct?.deviceId == deviceId) pendingProduct else null
+        Log.i(TAG, "Getting product for device ID $deviceId (pending: ${pendingProduct?.deviceId})")
+        // Return the pending product if we have one - the shouldConnect already verified the deviceId
+        return pendingProduct
     }
 
     override fun bluetoothFailedWithDisconnectCode(deviceId: String, disconnectCode: Int) {

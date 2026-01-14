@@ -71,6 +71,12 @@
                     android:scheme="msauth" />
             </intent-filter>
         </activity>
+
+        <!-- Masterlock SDK background scanner service (required for BLE scanning) -->
+        <service
+            android:name="com.masterlock.mlbluetoothsdk.bluetoothscanner.Scanner"
+            android:enabled="true"
+            android:exported="false" />
     </application>
 
 </manifest>

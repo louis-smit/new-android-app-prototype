@@ -15,7 +15,9 @@ import com.microsoft.identity.client.IPublicClientApplication
 import com.microsoft.identity.client.PublicClientApplication
 import com.microsoft.identity.client.exception.MsalException
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -167,8 +169,8 @@ class MicrosoftAuthService @Inject constructor(
         }
     }
 
-    suspend fun signOut() {
-        val app = msalApp ?: return
+    suspend fun signOut() = withContext(Dispatchers.IO) {
+        val app = msalApp ?: return@withContext
 
         val accounts = app.accounts
         accounts.forEach { account ->

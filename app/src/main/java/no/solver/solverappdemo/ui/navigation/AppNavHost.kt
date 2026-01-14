@@ -66,6 +66,24 @@ fun AppNavHost(
         isInitialized = true
     }
 
+    // Reactive navigation based on auth state (like iOS)
+    // When isAuthenticated changes AFTER initialization, navigate accordingly
+    LaunchedEffect(isAuthenticated, isInitialized) {
+        if (isInitialized) {
+            val currentRoute = navController.currentDestination?.route
+            val isOnAuthScreen = currentRoute?.contains("Login") == true || 
+                                 currentRoute?.contains("MobileLogin") == true ||
+                                 currentRoute?.contains("Splash") == true
+            
+            if (!isAuthenticated && !isOnAuthScreen) {
+                // User signed out while on a protected screen → go to login
+                navController.navigate(NavRoute.Login) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        }
+    }
+
     NavHost(
         navController = navController,
         startDestination = NavRoute.Splash,
@@ -147,10 +165,8 @@ fun AppNavHost(
                     navController.navigate(NavRoute.ObjectDetail(solverObject.id))
                 },
                 onSignOut = {
+                    // Navigation is handled reactively by LaunchedEffect when isAuthenticated changes
                     loginViewModel.signOut()
-                    navController.navigate(NavRoute.Login) {
-                        popUpTo(NavRoute.Main) { inclusive = true }
-                    }
                 },
                 onNavigateToMoreItem = { item ->
                     when (item) {

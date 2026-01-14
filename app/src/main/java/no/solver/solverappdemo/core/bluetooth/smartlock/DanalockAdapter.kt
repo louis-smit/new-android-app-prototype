@@ -225,6 +225,10 @@ class DanalockAdapter @Inject constructor(
                         tokensExpireAt = tokens.expiresAt
                     )
 
+                    // Delay before restarting polling to avoid Android's "scanning too frequently" throttle
+                    // Android throttles apps that start BLE scans within 30 seconds of stopping
+                    delay(2000L)
+                    
                     // Restart polling
                     startPolling(solverObject)
 

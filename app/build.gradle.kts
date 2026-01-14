@@ -133,6 +133,10 @@ dependencies {
     // Legacy (required by Masterlock SDK)
     implementation(libs.localbroadcastmanager)
 
+    // Google Play Services Location (required by Masterlock SDK for BLE scanning)
+    // Must use older version - Masterlock SDK was compiled against v19 where FusedLocationProviderClient was a class, not interface
+    implementation("com.google.android.gms:play-services-location:19.0.1")
+
     // Microsoft Auth
     implementation(libs.msal)
 
