@@ -280,7 +280,9 @@ fun AppNavHost(
                 )
             }
         ) {
-            PaymentsScreen()
+            PaymentsScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
 
         composable<NavRoute.Visit>(
@@ -314,7 +316,9 @@ fun AppNavHost(
                 )
             }
         ) {
-            LogsScreen()
+            LogsScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
 
         composable<NavRoute.Debug>(
@@ -331,7 +335,9 @@ fun AppNavHost(
                 )
             }
         ) {
-            DebugScreen()
+            DebugScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
 
         composable<NavRoute.DanalockDemo>(
