@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -264,8 +265,17 @@ private fun InputPinView(viewModel: MobileLoginViewModel, isPinValid: Boolean) {
         focusRequester.requestFocus()
     }
 
+    // Auto-confirm when all 6 digits are entered
+    LaunchedEffect(pin) {
+        if (pin.length == 6 && isPinValid) {
+            viewModel.confirm()
+        }
+    }
+
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(modifier = Modifier.height(20.dp))

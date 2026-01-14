@@ -129,6 +129,25 @@ class ObjectsViewModel @Inject constructor(
         loadObjects()
         loadFavourites()
         observeConnectivityChanges()
+        observeAccountChanges()
+    }
+
+    private fun observeAccountChanges() {
+        viewModelScope.launch {
+            var previousSessionId: String? = null
+            sessionManager.currentSessionFlow.collect { session ->
+                val currentSessionId = session?.id
+                // Only reload if session actually changed (not on initial load)
+                if (previousSessionId != null && currentSessionId != previousSessionId) {
+                    Log.d(TAG, "Account switched, reloading objects")
+                    // Reset state and reload for the new account
+                    _allObjects.value = emptyList()
+                    loadObjects()
+                    loadFavourites()
+                }
+                previousSessionId = currentSessionId
+            }
+        }
     }
 
     fun setSelectedTab(tab: Int) {

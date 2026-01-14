@@ -38,6 +38,7 @@ import no.solver.solverappdemo.features.auth.LoginScreen
 import no.solver.solverappdemo.features.auth.LoginViewModel
 import no.solver.solverappdemo.features.auth.MobileLoginScreen
 
+import no.solver.solverappdemo.features.accounts.AccountsScreen
 import no.solver.solverappdemo.features.find.FindScreen
 import no.solver.solverappdemo.features.more.DanalockDemoScreen
 import no.solver.solverappdemo.features.more.DebugScreen
@@ -177,8 +178,60 @@ fun AppNavHost(
                         MoreItem.DANALOCK_DEMO -> navController.navigate(NavRoute.DanalockDemo)
                         MoreItem.MASTERLOCK_DEMO -> navController.navigate(NavRoute.MasterlockDemo)
                     }
+                },
+                onNavigateToMicrosoftLogin = {
+                    navController.navigate(NavRoute.AddAccountLogin("microsoft"))
+                },
+                onNavigateToVippsLogin = {
+                    navController.navigate(NavRoute.AddAccountLogin("vipps"))
+                },
+                onNavigateToMobileLogin = {
+                    navController.navigate(NavRoute.AddAccountLogin("mobile"))
                 }
             )
+        }
+
+        // Add Account Login - reuses login flows but returns to Main instead of replacing
+        composable<NavRoute.AddAccountLogin>(
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Up,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            exitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Down,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            }
+        ) { backStackEntry ->
+            val route = backStackEntry.toRoute<NavRoute.AddAccountLogin>()
+            when (route.provider) {
+                "mobile" -> {
+                    MobileLoginScreen(
+                        onLoginSuccess = {
+                            navController.popBackStack()
+                        },
+                        onCancel = {
+                            navController.popBackStack()
+                        }
+                    )
+                }
+                else -> {
+                    // Microsoft or Vipps - use LoginScreen with add account mode
+                    LoginScreen(
+                        viewModel = loginViewModel,
+                        onLoginSuccess = {
+                            navController.popBackStack()
+                        },
+                        onMobileSignIn = {
+                            navController.navigate(NavRoute.MobileLogin)
+                        },
+                        autoTriggerProvider = route.provider
+                    )
+                }
+            }
         }
 
         composable<NavRoute.ObjectDetail>(
@@ -331,7 +384,10 @@ enum class MainDestination(
 fun MainScreen(
     onObjectClick: (SolverObject) -> Unit = {},
     onSignOut: () -> Unit = {},
-    onNavigateToMoreItem: (MoreItem) -> Unit = {}
+    onNavigateToMoreItem: (MoreItem) -> Unit = {},
+    onNavigateToMicrosoftLogin: () -> Unit = {},
+    onNavigateToVippsLogin: () -> Unit = {},
+    onNavigateToMobileLogin: () -> Unit = {}
 ) {
     var currentDestination by rememberSaveable { mutableStateOf(MainDestination.OBJECTS) }
 
@@ -364,7 +420,12 @@ fun MainScreen(
                 )
             }
             MainDestination.ACCOUNTS -> {
-                AccountsPlaceholderScreen(onSignOut = onSignOut)
+                AccountsScreen(
+                    onNavigateToMicrosoftLogin = onNavigateToMicrosoftLogin,
+                    onNavigateToVippsLogin = onNavigateToVippsLogin,
+                    onNavigateToMobileLogin = onNavigateToMobileLogin,
+                    onAllAccountsRemoved = onSignOut
+                )
             }
             MainDestination.MORE -> {
                 MoreScreen(
@@ -376,39 +437,4 @@ fun MainScreen(
     }
 }
 
-@Composable
-private fun PlaceholderScreen(
-    title: String,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text = title)
-    }
-}
 
-@Composable
-private fun AccountsPlaceholderScreen(
-    onSignOut: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.foundation.layout.Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
-        ) {
-            Text(text = "Accounts")
-            androidx.compose.material3.Button(onClick = onSignOut) {
-                Text("Sign Out")
-            }
-        }
-    }
-}
-
-private val Int.dp: androidx.compose.ui.unit.Dp
-    get() = androidx.compose.ui.unit.Dp(this.toFloat())

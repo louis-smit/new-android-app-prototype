@@ -35,10 +35,10 @@ enum class AuthEnvironment {
         }
 }
 
-enum class AuthProvider {
-    MICROSOFT,
-    VIPPS,
-    MOBILE
+enum class AuthProvider(val displayName: String) {
+    MICROSOFT("Microsoft"),
+    VIPPS("Vipps"),
+    MOBILE("Mobile")
 }
 
 data class APIConfiguration(

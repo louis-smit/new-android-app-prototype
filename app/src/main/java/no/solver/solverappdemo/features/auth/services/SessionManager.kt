@@ -36,6 +36,10 @@ class SessionManager @Inject constructor(
         sessions.find { it.id == sessionId }
     }
 
+    val allSessionsFlow: Flow<List<Session>> = dataStore.data.map { prefs ->
+        getSessions(prefs)
+    }
+
     val authEnvironmentFlow: Flow<AuthEnvironment> = dataStore.data.map { prefs ->
         val envName = prefs[KEY_AUTH_ENVIRONMENT] ?: AuthEnvironment.SOLVER.name
         AuthEnvironment.valueOf(envName)
@@ -95,14 +99,28 @@ class SessionManager @Inject constructor(
     }
 
     suspend fun removeSession(sessionId: String) {
+        var newCurrentSession: Session? = null
+        
         dataStore.edit { prefs ->
             val sessions = getSessions(prefs).toMutableList()
             sessions.removeAll { it.id == sessionId }
             prefs[KEY_SESSIONS] = json.encodeToString(sessions.map { it.toSerializable() })
 
             if (prefs[KEY_CURRENT_SESSION_ID] == sessionId) {
-                prefs[KEY_CURRENT_SESSION_ID] = sessions.firstOrNull()?.id ?: ""
+                val newCurrent = sessions.firstOrNull()
+                if (newCurrent != null) {
+                    prefs[KEY_CURRENT_SESSION_ID] = newCurrent.id
+                    newCurrentSession = newCurrent
+                } else {
+                    prefs.remove(KEY_CURRENT_SESSION_ID)
+                }
             }
+        }
+        
+        if (newCurrentSession != null) {
+            updateTokensForSession(newCurrentSession!!)
+        } else {
+            tokenStorage.clearTokens()
         }
     }
 
@@ -114,12 +132,13 @@ class SessionManager @Inject constructor(
             prefs[KEY_CURRENT_SESSION_ID] = sessionId
         }
 
-        // Update TokenStorage with the new session's tokens
-        targetSession?.let { session ->
-            tokenStorage.saveAccessToken(session.tokens.accessToken)
-            session.tokens.refreshToken?.let { tokenStorage.saveRefreshToken(it) }
-            tokenStorage.saveTokenExpiry(session.tokens.expiresAtMillis)
-        }
+        targetSession?.let { updateTokensForSession(it) }
+    }
+
+    fun updateTokensForSession(session: Session) {
+        tokenStorage.saveAccessToken(session.tokens.accessToken)
+        session.tokens.refreshToken?.let { tokenStorage.saveRefreshToken(it) }
+        tokenStorage.saveTokenExpiry(session.tokens.expiresAtMillis)
     }
 
     suspend fun getAllSessions(): List<Session> {

@@ -54,7 +54,8 @@ private val VippsOrange = Color(0xFFFF5B24)
 fun LoginScreen(
     viewModel: LoginViewModel = hiltViewModel(),
     onLoginSuccess: () -> Unit = {},
-    onMobileSignIn: () -> Unit = {}
+    onMobileSignIn: () -> Unit = {},
+    autoTriggerProvider: String? = null
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
@@ -68,6 +69,18 @@ fun LoginScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         viewModel.handleVippsAuthResult(result.data)
+    }
+
+    // Auto-trigger provider sign-in for add account mode
+    LaunchedEffect(autoTriggerProvider) {
+        if (autoTriggerProvider != null && activity != null && uiState !is LoginUiState.SigningIn) {
+            when (autoTriggerProvider) {
+                "microsoft" -> viewModel.signInWithMicrosoft(activity)
+                "vipps" -> viewModel.signInWithVipps(activity) { intent, _ ->
+                    vippsAuthLauncher.launch(intent)
+                }
+            }
+        }
     }
 
     LaunchedEffect(isAuthenticated) {

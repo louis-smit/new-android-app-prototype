@@ -13,6 +13,9 @@ sealed interface NavRoute {
     data object MobileLogin : NavRoute
 
     @Serializable
+    data class AddAccountLogin(val provider: String = "microsoft") : NavRoute
+
+    @Serializable
     data object Main : NavRoute
 
     @Serializable
