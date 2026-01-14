@@ -92,9 +92,16 @@ android {
 }
 
 dependencies {
+    // Bluetooth Lock SDKs (proprietary, from libs/)
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
+    
+    // GSON (required by Danalock SDK)
+    implementation("com.google.code.gson:gson:2.10.1")
+    
     // Core Android
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.activity.compose)
 
     // Compose
@@ -117,10 +124,14 @@ dependencies {
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.retrofit.kotlinx.serialization.converter)
+    implementation(libs.retrofit.converter.gson) // Required by Masterlock SDK
 
     // Storage
     implementation(libs.datastore.preferences)
     implementation(libs.security.crypto)
+
+    // Legacy (required by Masterlock SDK)
+    implementation(libs.localbroadcastmanager)
 
     // Microsoft Auth
     implementation(libs.msal)

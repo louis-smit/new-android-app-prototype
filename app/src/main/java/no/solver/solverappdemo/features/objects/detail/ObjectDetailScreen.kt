@@ -52,10 +52,22 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -73,7 +85,11 @@ import no.solver.solverappdemo.data.models.ContextItem
 import no.solver.solverappdemo.data.models.ExecuteResponse
 import no.solver.solverappdemo.data.models.OnlineState
 import no.solver.solverappdemo.data.models.SolverObject
+import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockBrand
+import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockCapabilities
+import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockStatus
 import no.solver.solverappdemo.ui.components.ObjectIcon
+import no.solver.solverappdemo.ui.components.SmartLockCard
 import no.solver.solverappdemo.ui.theme.SolverAppTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,9 +115,107 @@ fun ObjectDetailScreen(
     val isFavourite by viewModel.isFavourite.collectAsState()
     val showInfoSheet by viewModel.showInfoSheet.collectAsState()
 
+    // Smart lock state
+    val lockBrand by viewModel.lockBrand.collectAsState()
+    val lockStatus by viewModel.lockStatus.collectAsState()
+    val lockCapabilities by viewModel.lockCapabilities.collectAsState()
+    val cachedOperation by viewModel.cachedOperation.collectAsState()
+    val cachedUnlockResult by viewModel.cachedUnlockResult.collectAsState()
+
     var showOverflowMenu by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Bluetooth permission handling for Android 12+
+    var pendingBluetoothAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.values.all { it }
+        if (allGranted) {
+            // Execute the pending action now that we have permissions
+            pendingBluetoothAction?.invoke()
+        } else {
+            scope.launch {
+                snackbarHostState.showSnackbar("Bluetooth permission is required for smart lock control")
+            }
+        }
+        pendingBluetoothAction = null
+    }
+    
+    // Helper function to check permissions and execute action
+    fun withBluetoothPermission(action: () -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val hasBluetoothScan = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.BLUETOOTH_SCAN
+            ) == PackageManager.PERMISSION_GRANTED
+            val hasBluetoothConnect = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
+            
+            if (hasBluetoothScan && hasBluetoothConnect) {
+                action()
+            } else {
+                pendingBluetoothAction = action
+                bluetoothPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.BLUETOOTH_SCAN,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    )
+                )
+            }
+        } else {
+            // Permissions are granted at install time on older Android versions
+            action()
+        }
+    }
+
+    // Request Bluetooth permissions proactively when smart lock is detected
+    LaunchedEffect(lockBrand) {
+        if (lockBrand != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val hasBluetoothScan = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.BLUETOOTH_SCAN
+            ) == PackageManager.PERMISSION_GRANTED
+            val hasBluetoothConnect = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
+            
+            if (!hasBluetoothScan || !hasBluetoothConnect) {
+                bluetoothPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.BLUETOOTH_SCAN,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    )
+                )
+            }
+        }
+    }
+
+    // App lifecycle observer for smart lock BLE polling
+    // Matches iOS NotificationCenter observers for app foreground/background
+    DisposableEffect(Unit) {
+        val lifecycleOwner = ProcessLifecycleOwner.get()
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    // App entered foreground - restart BLE polling if needed
+                    viewModel.onAppForeground()
+                }
+                Lifecycle.Event.ON_STOP -> {
+                    // App entered background - stop BLE polling
+                    viewModel.onAppBackground()
+                }
+                else -> { /* Ignore other events */ }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Show error as snackbar
     LaunchedEffect(commandError) {
@@ -246,6 +360,11 @@ fun ObjectDetailScreen(
                         solverObject = state.solverObject,
                         baseUrl = apiBaseUrl,
                         executingCommandId = executingCommandId,
+                        lockBrand = lockBrand,
+                        lockStatus = lockStatus,
+                        lockCapabilities = lockCapabilities,
+                        cachedOperation = cachedOperation,
+                        cachedUnlockResult = cachedUnlockResult,
                         onCommandClick = { command ->
                             viewModel.handleCommand(command)
                         },
@@ -253,7 +372,12 @@ fun ObjectDetailScreen(
                             val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(${Uri.encode(name)})")
                             val intent = Intent(Intent.ACTION_VIEW, uri)
                             context.startActivity(intent)
-                        }
+                        },
+                        onUnlock = { withBluetoothPermission { viewModel.executeCachedUnlock("unlock") } },
+                        onLock = { withBluetoothPermission { viewModel.executeCachedUnlock("lock") } },
+                        onCheckStatus = { withBluetoothPermission { viewModel.checkLockStatus() } },
+                        onGetKeys = { withBluetoothPermission { viewModel.fetchAndCacheKeys() } },
+                        onClearKeys = { viewModel.clearCachedKeys() }
                     )
                 }
                 is ObjectDetailUiState.Error -> {
@@ -277,13 +401,18 @@ fun ObjectDetailScreen(
         )
     }
 
-    // Execute Response Dialog
+    // Execute Response Bottom Sheet
     if (showExecuteResponse && lastExecuteResponse != null) {
-        ExecuteResponseDialog(
-            response = lastExecuteResponse!!,
-            middlewareMessage = middlewareMessage,
-            onDismiss = { viewModel.dismissExecuteResponse() }
-        )
+        val sheetState = rememberModalBottomSheetState()
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.dismissExecuteResponse() },
+            sheetState = sheetState
+        ) {
+            ExecuteResponseSheetContent(
+                response = lastExecuteResponse!!,
+                middlewareMessage = middlewareMessage
+            )
+        }
     }
 
     // Status Bottom Sheet
@@ -332,8 +461,18 @@ private fun ObjectDetailContent(
     solverObject: SolverObject,
     baseUrl: String,
     executingCommandId: String?,
+    lockBrand: SmartLockBrand?,
+    lockStatus: SmartLockStatus,
+    lockCapabilities: SmartLockCapabilities?,
+    cachedOperation: CachedOperation,
+    cachedUnlockResult: String?,
     onCommandClick: (Command) -> Unit,
     onOpenInMaps: (Double, Double, String) -> Unit,
+    onUnlock: () -> Unit,
+    onLock: () -> Unit,
+    onCheckStatus: () -> Unit,
+    onGetKeys: () -> Unit,
+    onClearKeys: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -347,6 +486,22 @@ private fun ObjectDetailContent(
             solverObject = solverObject,
             baseUrl = baseUrl
         )
+
+        // Smart lock card (shown below header for lock objects)
+        if (lockBrand != null && lockCapabilities != null) {
+            SmartLockCard(
+                lockBrand = lockBrand,
+                lockStatus = lockStatus,
+                capabilities = lockCapabilities,
+                operation = cachedOperation,
+                debugResult = cachedUnlockResult,
+                onUnlock = onUnlock,
+                onLock = onLock,
+                onCheckStatus = onCheckStatus,
+                onGetKeys = onGetKeys,
+                onClearKeys = onClearKeys
+            )
+        }
 
         ObjectInfoCard(
             solverObject = solverObject,
@@ -680,74 +835,169 @@ private fun CommandInputDialog(
 }
 
 @Composable
-private fun ExecuteResponseDialog(
+private fun ExecuteResponseSheetContent(
     response: ExecuteResponse,
     middlewareMessage: String?,
-    onDismiss: () -> Unit
+    modifier: Modifier = Modifier
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+    val successColor = Color(0xFF4CAF50)
+    val errorColor = Color(0xFFF44336)
+    val statusColor = if (response.success) successColor else errorColor
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(top = 8.dp, bottom = 40.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        // Title
+        Text(
+            text = "Command Result",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+
+        // Middleware debug banner (if middleware triggered)
+        middlewareMessage?.let { message ->
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
             ) {
-                Icon(
-                    imageVector = if (response.success) Icons.Default.CheckCircle else Icons.Default.Close,
-                    contentDescription = null,
-                    tint = if (response.success) Color(0xFF4CAF50) else Color(0xFFF44336)
-                )
-                Text(if (response.success) "Success" else "Failed")
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_info),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Middleware Triggered",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+        }
+
+        // Success/Failure indicator
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = statusColor.copy(alpha = 0.1f)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                middlewareMessage?.let { message ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "Middleware",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = message,
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(
+                            color = statusColor,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (response.success) Icons.Default.CheckCircle else Icons.Default.Close,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Text(
+                    text = if (response.success) "Success" else "Failed",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        // Response Details Section
+        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+            Text(
+                text = "RESPONSE DETAILS",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+            )
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow
+            ) {
+                Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                    response.objectName?.let { name ->
+                        DetailsRow(label = "Object", value = name)
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    }
+
+                    response.objectId?.let { id ->
+                        DetailsRow(label = "Object ID", value = id.toString())
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    }
+
+                    response.time?.let { time ->
+                        DetailsRow(label = "Time", value = time)
+                    }
+                }
+            }
+        }
+
+        // Context Section (if available)
+        response.context?.takeIf { it.isNotEmpty() }?.let { context ->
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                Text(
+                    text = "CONTEXT",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+                )
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                        context.forEachIndexed { index, item ->
+                            DetailsRow(label = item.label, value = item.value)
+                            if (index < context.size - 1) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                )
+                            }
                         }
                     }
                 }
-
-                response.objectName?.let { name ->
-                    DetailRow(label = "Object", value = name)
-                }
-
-                response.time?.let { time ->
-                    DetailRow(label = "Time", value = time)
-                }
-
-                response.context?.takeIf { it.isNotEmpty() }?.let { context ->
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                    Text(
-                        text = "Context",
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                    context.forEach { item ->
-                        DetailRow(label = item.label, value = item.value)
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Done")
             }
         }
-    )
+    }
 }
 
 @Composable
@@ -1050,9 +1300,9 @@ private fun CommandsCardExecutingPreview() {
 
 @Preview(showBackground = true)
 @Composable
-private fun ExecuteResponseDialogPreview() {
+private fun ExecuteResponseSheetContentPreview() {
     SolverAppTheme {
-        ExecuteResponseDialog(
+        ExecuteResponseSheetContent(
             response = ExecuteResponse(
                 success = true,
                 objectId = 1,
@@ -1062,8 +1312,7 @@ private fun ExecuteResponseDialogPreview() {
                     ContextItem(key = "status", label = "Status", value = "Unlocked")
                 )
             ),
-            middlewareMessage = "[StatusMiddleware] Status displayed",
-            onDismiss = {}
+            middlewareMessage = "[StatusMiddleware] Status displayed"
         )
     }
 }

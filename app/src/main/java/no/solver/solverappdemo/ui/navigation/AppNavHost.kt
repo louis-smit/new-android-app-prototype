@@ -39,6 +39,14 @@ import no.solver.solverappdemo.features.auth.LoginViewModel
 import no.solver.solverappdemo.features.auth.MobileLoginScreen
 
 import no.solver.solverappdemo.features.find.FindScreen
+import no.solver.solverappdemo.features.more.DanalockDemoScreen
+import no.solver.solverappdemo.features.more.DebugScreen
+import no.solver.solverappdemo.features.more.LogsScreen
+import no.solver.solverappdemo.features.more.MasterlockDemoScreen
+import no.solver.solverappdemo.features.more.MoreItem
+import no.solver.solverappdemo.features.more.MoreScreen
+import no.solver.solverappdemo.features.more.PaymentsScreen
+import no.solver.solverappdemo.features.more.VisitScreen
 import no.solver.solverappdemo.features.objects.ObjectsScreen
 import no.solver.solverappdemo.features.objects.detail.ObjectDetailScreen
 
@@ -143,6 +151,16 @@ fun AppNavHost(
                     navController.navigate(NavRoute.Login) {
                         popUpTo(NavRoute.Main) { inclusive = true }
                     }
+                },
+                onNavigateToMoreItem = { item ->
+                    when (item) {
+                        MoreItem.PAYMENTS -> navController.navigate(NavRoute.Payments)
+                        MoreItem.VISIT -> navController.navigate(NavRoute.Visit)
+                        MoreItem.LOGS -> navController.navigate(NavRoute.Logs)
+                        MoreItem.DEBUG -> navController.navigate(NavRoute.Debug)
+                        MoreItem.DANALOCK_DEMO -> navController.navigate(NavRoute.DanalockDemo)
+                        MoreItem.MASTERLOCK_DEMO -> navController.navigate(NavRoute.MasterlockDemo)
+                    }
                 }
             )
         }
@@ -177,6 +195,109 @@ fun AppNavHost(
                 onNavigateBack = { navController.popBackStack() }
             )
         }
+
+        // More sub-screens
+        composable<NavRoute.Payments>(
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            }
+        ) {
+            PaymentsScreen()
+        }
+
+        composable<NavRoute.Visit>(
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            }
+        ) {
+            VisitScreen()
+        }
+
+        composable<NavRoute.Logs>(
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            }
+        ) {
+            LogsScreen()
+        }
+
+        composable<NavRoute.Debug>(
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            }
+        ) {
+            DebugScreen()
+        }
+
+        composable<NavRoute.DanalockDemo>(
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            }
+        ) {
+            DanalockDemoScreen()
+        }
+
+        composable<NavRoute.MasterlockDemo>(
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Left,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            },
+            popExitTransition = {
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Right,
+                    animationSpec = tween(TRANSITION_DURATION_MS)
+                )
+            }
+        ) {
+            MasterlockDemoScreen()
+        }
     }
 }
 
@@ -193,7 +314,8 @@ enum class MainDestination(
 @Composable
 fun MainScreen(
     onObjectClick: (SolverObject) -> Unit = {},
-    onSignOut: () -> Unit = {}
+    onSignOut: () -> Unit = {},
+    onNavigateToMoreItem: (MoreItem) -> Unit = {}
 ) {
     var currentDestination by rememberSaveable { mutableStateOf(MainDestination.OBJECTS) }
 
@@ -229,7 +351,10 @@ fun MainScreen(
                 AccountsPlaceholderScreen(onSignOut = onSignOut)
             }
             MainDestination.MORE -> {
-                PlaceholderScreen(title = "More")
+                MoreScreen(
+                    onSignOut = onSignOut,
+                    onNavigateToItem = onNavigateToMoreItem
+                )
             }
         }
     }

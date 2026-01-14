@@ -22,9 +22,15 @@ class MiddlewareChain(
             repository: ObjectsRepository,
             paymentMiddleware: PaymentMiddleware,
             subscriptionMiddleware: SubscriptionMiddleware,
+            danalockMiddleware: DanalockMiddleware,
+            masterlockMiddleware: MasterlockMiddleware,
             onShowStatusSheet: (ExecuteResponse) -> Unit
         ): MiddlewareChain {
+            // Order matters: Bluetooth locks should be processed before generic handlers
+            // because they intercept the command and execute via BLE instead of just logging
             val middlewares = listOf(
+                danalockMiddleware,     // Handle Danalock Bluetooth commands
+                masterlockMiddleware,   // Handle Masterlock Bluetooth commands
                 paymentMiddleware,
                 subscriptionMiddleware,
                 GeofenceMiddleware(),

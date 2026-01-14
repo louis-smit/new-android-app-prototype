@@ -21,9 +21,16 @@ import no.solver.solverappdemo.data.models.ExecuteResponse
 import no.solver.solverappdemo.data.models.SolverObject
 import no.solver.solverappdemo.data.repositories.ObjectsRepository
 import no.solver.solverappdemo.features.auth.services.SessionManager
+import no.solver.solverappdemo.features.objects.middleware.DanalockMiddleware
+import no.solver.solverappdemo.features.objects.middleware.MasterlockMiddleware
 import no.solver.solverappdemo.features.objects.middleware.MiddlewareChain
 import no.solver.solverappdemo.features.objects.middleware.PaymentMiddleware
 import no.solver.solverappdemo.features.objects.middleware.SubscriptionMiddleware
+import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockBrand
+import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockCapabilities
+import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockManager
+import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockState
+import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockStatus
 import no.solver.solverappdemo.ui.navigation.NavRoute
 import javax.inject.Inject
 
@@ -33,12 +40,26 @@ sealed class ObjectDetailUiState {
     data class Error(val message: String) : ObjectDetailUiState()
 }
 
+/**
+ * Cached operation state for smart lock UI
+ */
+enum class CachedOperation {
+    NONE,
+    UNLOCKING,
+    LOCKING,
+    CHECKING_STATUS,
+    FETCHING_KEYS
+}
+
 @HiltViewModel
 class ObjectDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val objectsRepository: ObjectsRepository,
     private val sessionManager: SessionManager,
-    private val favouritesStore: FavouritesStore
+    private val favouritesStore: FavouritesStore,
+    private val danalockMiddleware: DanalockMiddleware,
+    private val masterlockMiddleware: MasterlockMiddleware,
+    private val smartLockManager: SmartLockManager
 ) : ViewModel() {
 
     companion object {
@@ -95,6 +116,48 @@ class ObjectDetailViewModel @Inject constructor(
     private val _showInfoSheet = MutableStateFlow(false)
     val showInfoSheet: StateFlow<Boolean> = _showInfoSheet.asStateFlow()
 
+    // Smart lock state
+    private val _lockBrand = MutableStateFlow<SmartLockBrand?>(null)
+    val lockBrand: StateFlow<SmartLockBrand?> = _lockBrand.asStateFlow()
+
+    private val _lockStatus = MutableStateFlow(SmartLockStatus.UNKNOWN)
+    val lockStatus: StateFlow<SmartLockStatus> = _lockStatus.asStateFlow()
+
+    private val _cachedOperation = MutableStateFlow(CachedOperation.NONE)
+    val cachedOperation: StateFlow<CachedOperation> = _cachedOperation.asStateFlow()
+
+    private val _cachedUnlockResult = MutableStateFlow<String?>(null)
+    val cachedUnlockResult: StateFlow<String?> = _cachedUnlockResult.asStateFlow()
+
+    val lockState: StateFlow<SmartLockState>
+        get() = combine(_lockStatus, MutableStateFlow(Unit)) { status, _ ->
+            status.state
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, SmartLockState.UNKNOWN)
+
+    val lockBatteryLevel: StateFlow<Int?>
+        get() = combine(_lockStatus, MutableStateFlow(Unit)) { status, _ ->
+            status.batteryLevel
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val lockInRange: StateFlow<Boolean>
+        get() = combine(_lockStatus, MutableStateFlow(Unit)) { status, _ ->
+            status.inRange
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val hasLockTokens: StateFlow<Boolean>
+        get() = combine(_lockStatus, MutableStateFlow(Unit)) { status, _ ->
+            status.hasValidTokens
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val lockCapabilities: StateFlow<SmartLockCapabilities?>
+        get() = combine(_lockBrand, MutableStateFlow(Unit)) { brand, _ ->
+            when (brand) {
+                SmartLockBrand.DANALOCK -> SmartLockCapabilities.DANALOCK
+                SmartLockBrand.MASTERLOCK -> SmartLockCapabilities.MASTERLOCK
+                null -> null
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     // Favourite state
     val isFavourite: StateFlow<Boolean> = favouritesStore.favouriteIds
         .stateIn(
@@ -121,6 +184,8 @@ class ObjectDetailViewModel @Inject constructor(
             repository = objectsRepository,
             paymentMiddleware = paymentMiddleware,
             subscriptionMiddleware = subscriptionMiddleware,
+            danalockMiddleware = danalockMiddleware,
+            masterlockMiddleware = masterlockMiddleware,
             onShowStatusSheet = { response ->
                 _statusSheetResponse.value = response
                 _showStatusSheet.value = true
@@ -165,6 +230,9 @@ class ObjectDetailViewModel @Inject constructor(
                     val solverObject = result.data
                     _uiState.value = ObjectDetailUiState.Success(solverObject)
                     Log.d(TAG, "Successfully loaded object: ${solverObject.name}")
+                    
+                    // Set up smart lock state if applicable
+                    setupSmartLockState(solverObject)
                 }
                 is ApiResult.Error -> {
                     val message = result.exception.message ?: "Unknown error"
@@ -172,6 +240,50 @@ class ObjectDetailViewModel @Inject constructor(
                     Log.e(TAG, "Failed to load object: $message")
                 }
             }
+        }
+    }
+    
+    private fun setupSmartLockState(solverObject: SolverObject) {
+        val brand = smartLockManager.lockBrand(solverObject)
+        _lockBrand.value = brand
+        
+        if (brand != null) {
+            Log.d(TAG, "Object is a ${brand.displayName} smart lock")
+            val adapter = smartLockManager.adapter(brand)
+            
+            // Observe the adapter's status flow
+            viewModelScope.launch {
+                adapter.status.collect { status ->
+                    _lockStatus.value = status
+                }
+            }
+            
+            // Auto-fetch keys if missing/expired, otherwise start polling
+            viewModelScope.launch {
+                autoFetchKeysIfNeeded(solverObject)
+            }
+        }
+    }
+    
+    /**
+     * Automatically fetch and cache smart lock keys if they don't exist or are expired.
+     * Matches iOS autoFetchKeysIfNeeded behavior.
+     */
+    private suspend fun autoFetchKeysIfNeeded(solverObject: SolverObject) {
+        val brand = _lockBrand.value ?: return
+        val adapter = smartLockManager.adapter(brand)
+        
+        if (adapter.hasValidTokens(objectId)) {
+            Log.i(TAG, "🔑 ${brand.displayName} has valid cached keys, skipping auto-fetch")
+            
+            // Show current cache status
+            _cachedUnlockResult.value = "✅ Keys cached successfully"
+            
+            // Start polling with cached tokens
+            adapter.startPolling(solverObject)
+        } else {
+            Log.i(TAG, "🔑 ${brand.displayName} keys missing or expired, auto-fetching...")
+            fetchAndCacheKeys()
         }
     }
 
@@ -361,5 +473,161 @@ class ObjectDetailViewModel @Inject constructor(
         val obj = solverObject ?: return
         Log.i(TAG, "Handling explicit subscription for object ${obj.id}")
         subscriptionMiddleware.handleSubscriptionSelected("explicit")
+    }
+
+    // MARK: - Smart Lock Actions
+
+    fun executeCachedUnlock(commandName: String) {
+        val obj = solverObject ?: return
+        val brand = _lockBrand.value ?: return
+        val adapter = smartLockManager.adapter(brand)
+
+        viewModelScope.launch {
+            _cachedOperation.value = if (commandName == "lock") CachedOperation.LOCKING else CachedOperation.UNLOCKING
+            _cachedUnlockResult.value = null
+
+            val result = if (commandName == "lock") {
+                adapter.lock(obj)
+            } else {
+                adapter.unlock(obj)
+            }
+
+            result.fold(
+                onSuccess = { message ->
+                    Log.i(TAG, "Smart lock $commandName succeeded: $message")
+                    _cachedUnlockResult.value = message
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "Smart lock $commandName failed: ${error.message}")
+                    _cachedUnlockResult.value = "Error: ${error.message}"
+                    _commandError.value = error.message
+                }
+            )
+
+            _cachedOperation.value = CachedOperation.NONE
+        }
+    }
+
+    fun checkLockStatus() {
+        val obj = solverObject ?: return
+        val brand = _lockBrand.value ?: return
+        val adapter = smartLockManager.adapter(brand)
+
+        viewModelScope.launch {
+            _cachedOperation.value = CachedOperation.CHECKING_STATUS
+
+            val result = adapter.checkStatus(obj)
+            result.fold(
+                onSuccess = { state ->
+                    Log.i(TAG, "Lock status check succeeded: $state")
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "Lock status check failed: ${error.message}")
+                    _commandError.value = error.message
+                }
+            )
+
+            _cachedOperation.value = CachedOperation.NONE
+        }
+    }
+
+    fun fetchAndCacheKeys() {
+        val obj = solverObject ?: return
+        val brand = _lockBrand.value ?: return
+        val adapter = smartLockManager.adapter(brand)
+
+        viewModelScope.launch {
+            _cachedOperation.value = CachedOperation.FETCHING_KEYS
+            _cachedUnlockResult.value = null
+
+            val result = adapter.fetchTokens(obj)
+            result.fold(
+                onSuccess = { tokens ->
+                    Log.i(TAG, "Keys fetched successfully for ${tokens.deviceIdentifier}")
+                    
+                    // Calculate validity time
+                    val validityInfo = tokens.remainingValiditySeconds?.let { remaining ->
+                        val minutes = (remaining / 60).toInt()
+                        "Valid for $minutes minutes"
+                    } ?: "Using fallback expiry"
+                    
+                    _cachedUnlockResult.value = "✅ Keys cached successfully\nDevice: ${tokens.deviceIdentifier}\n$validityInfo"
+                    
+                    // Start polling now that we have tokens
+                    adapter.startPolling(obj)
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "Failed to fetch keys: ${error.message}")
+                    _cachedUnlockResult.value = "❌ GetKeys failed: ${error.message}"
+                    _commandError.value = error.message
+                }
+            )
+
+            _cachedOperation.value = CachedOperation.NONE
+        }
+    }
+
+    fun clearCachedKeys() {
+        val obj = solverObject ?: return
+        val brand = _lockBrand.value ?: return
+        val adapter = smartLockManager.adapter(brand)
+        
+        Log.i(TAG, "🗑️ Clearing cached keys for object $objectId")
+        adapter.clearTokens(objectId)
+        adapter.stopPolling()
+        _lockStatus.value = SmartLockStatus.UNKNOWN
+        _cachedUnlockResult.value = "🗑️ Keys cleared from cache"
+        
+        // Auto-fetch new keys after clearing (matches iOS behavior)
+        viewModelScope.launch {
+            autoFetchKeysIfNeeded(obj)
+        }
+    }
+
+    fun stopLockStatePolling() {
+        viewModelScope.launch {
+            smartLockManager.stopAllAdapters()
+        }
+    }
+    
+    // MARK: - App Lifecycle Handling
+    
+    /**
+     * Called when app enters foreground.
+     * Restarts BLE polling if we have valid tokens.
+     * Matches iOS willEnterForeground behavior.
+     */
+    fun onAppForeground() {
+        val obj = solverObject ?: return
+        val brand = _lockBrand.value ?: return
+        
+        Log.i(TAG, "🔐 App entered foreground - restarting polling if needed")
+        
+        val adapter = smartLockManager.adapter(brand)
+        if (adapter.hasValidTokens(objectId)) {
+            Log.i(TAG, "🔐 Valid tokens found, restarting lock state polling")
+            adapter.startPolling(obj)
+        } else {
+            Log.i(TAG, "🔐 No valid tokens, will fetch on next command")
+        }
+    }
+    
+    /**
+     * Called when app enters background.
+     * Stops BLE polling to avoid battery drain and connection issues.
+     * Matches iOS willResignActive/didEnterBackground behavior.
+     */
+    fun onAppBackground() {
+        Log.i(TAG, "🔐 App entered background - stopping BLE polling")
+        viewModelScope.launch {
+            smartLockManager.stopAllAdapters()
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        viewModelScope.launch {
+            smartLockManager.stopAllAdapters()
+        }
     }
 }
