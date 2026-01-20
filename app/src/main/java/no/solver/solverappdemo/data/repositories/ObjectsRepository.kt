@@ -88,6 +88,20 @@ class ObjectsRepository @Inject constructor(
 
             if (response.isSuccessful) {
                 response.body() ?: throw ApiException.Unknown("Empty response")
+            } else if (response.code() == 403) {
+                // For command execution, 403 might contain valid middleware context
+                // (payment required, subscription required, geofence override, etc.)
+                // Try to parse the response body for middleware processing
+                val errorBody = response.errorBody()?.string()
+                if (errorBody != null) {
+                    try {
+                        kotlinx.serialization.json.Json.decodeFromString<ExecuteResponse>(errorBody)
+                    } catch (e: Exception) {
+                        throw ApiException.Forbidden("Access denied")
+                    }
+                } else {
+                    throw ApiException.Forbidden("Access denied")
+                }
             } else {
                 throw ApiException.fromHttpCode(response.code(), response.message())
             }

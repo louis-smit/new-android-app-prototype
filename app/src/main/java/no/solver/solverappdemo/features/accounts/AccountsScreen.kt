@@ -279,6 +279,36 @@ private fun AccountListContent(
             }
         }
 
+        // Sign Out Section
+        if (currentSessionId != null) {
+            item {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+
+                Button(
+                    onClick = { currentSessionId.let { onRemove(it) } },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Transparent,
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_logout),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Sign Out",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
         // Spacer at bottom
         item {
             Spacer(modifier = Modifier.height(32.dp))
