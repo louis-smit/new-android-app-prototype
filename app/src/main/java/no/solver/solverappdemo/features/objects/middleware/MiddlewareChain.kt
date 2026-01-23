@@ -9,7 +9,9 @@ import no.solver.solverappdemo.data.repositories.ObjectsRepository
 data class MiddlewareProcessResult(
     val handled: Boolean,
     val message: String?,
-    val shouldShowDebugUI: Boolean
+    val shouldShowDebugUI: Boolean,
+    /** True if a middleware with shouldEarlyExit handled the response (e.g., payment/subscription) */
+    val middlewareTookOverUI: Boolean = false
 )
 
 class MiddlewareChain(
@@ -51,6 +53,7 @@ class MiddlewareChain(
         var middlewareHandled = false
         var middlewareMessage: String? = null
         var shouldShowDebugUI = false
+        var middlewareTookOverUI = false
 
         for (middleware in middlewares) {
             if (middleware.matches(response, command)) {
@@ -69,7 +72,8 @@ class MiddlewareChain(
                         }
 
                         if (middleware.shouldEarlyExit) {
-                            Log.d(TAG, "⏹️ Early exit after ${middleware.name}")
+                            Log.d(TAG, "⏹️ Early exit after ${middleware.name} - middleware took over UI")
+                            middlewareTookOverUI = true
                             break
                         }
                     }
@@ -88,7 +92,8 @@ class MiddlewareChain(
         return MiddlewareProcessResult(
             handled = middlewareHandled,
             message = middlewareMessage,
-            shouldShowDebugUI = shouldShowDebugUI
+            shouldShowDebugUI = shouldShowDebugUI,
+            middlewareTookOverUI = middlewareTookOverUI
         )
     }
 }

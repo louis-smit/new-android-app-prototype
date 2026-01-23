@@ -122,10 +122,15 @@ data class ObjectInformation(
 ) {
     val hasValidHtmlContent: Boolean
         get() = !htmlContent.isNullOrBlank()
+    
+    val isHtmlMode: Boolean
+        get() = attributes?.any { attr ->
+            attr.label?.lowercase() == "html" && attr.value?.lowercase() == "true"
+        } ?: false
 }
 
 @Serializable
 data class ObjectAttribute(
-    val key: String? = null,
+    val label: String? = null,
     val value: String? = null
 )

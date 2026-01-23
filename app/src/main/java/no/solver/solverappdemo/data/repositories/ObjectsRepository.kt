@@ -1,5 +1,6 @@
 package no.solver.solverappdemo.data.repositories
 
+import kotlinx.serialization.json.Json
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
 import no.solver.solverappdemo.core.network.ApiException
@@ -16,7 +17,8 @@ import javax.inject.Singleton
 @Singleton
 class ObjectsRepository @Inject constructor(
     private val apiClientManager: ApiClientManager,
-    private val sessionManager: SessionManager
+    private val sessionManager: SessionManager,
+    private val json: Json
 ) {
     suspend fun getUserObjects(): ApiResult<List<SolverObject>> {
         return ApiResult.runCatching {
@@ -95,7 +97,7 @@ class ObjectsRepository @Inject constructor(
                 val errorBody = response.errorBody()?.string()
                 if (errorBody != null) {
                     try {
-                        kotlinx.serialization.json.Json.decodeFromString<ExecuteResponse>(errorBody)
+                        json.decodeFromString<ExecuteResponse>(errorBody)
                     } catch (e: Exception) {
                         throw ApiException.Forbidden("Access denied")
                     }

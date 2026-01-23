@@ -89,7 +89,9 @@ import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockBrand
 import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockCapabilities
 import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockStatus
 import no.solver.solverappdemo.ui.components.ObjectIcon
+import no.solver.solverappdemo.ui.components.PaymentMethodSheetContent
 import no.solver.solverappdemo.ui.components.SmartLockCard
+import no.solver.solverappdemo.ui.components.SubscriptionSheetContent
 import no.solver.solverappdemo.ui.theme.SolverAppTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -451,6 +453,46 @@ fun ObjectDetailScreen(
         ) {
             ObjectInfoSheetContent(
                 information = viewModel.solverObject?.information
+            )
+        }
+    }
+    
+    // Payment Middleware Sheet
+    val showPaymentSheet by viewModel.paymentMiddleware.showPaymentSheet.collectAsState()
+    val paymentContext by viewModel.paymentMiddleware.paymentContext.collectAsState()
+    
+    if (showPaymentSheet && paymentContext != null) {
+        val sheetState = rememberModalBottomSheetState()
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.paymentMiddleware.dismissPaymentSheet() },
+            sheetState = sheetState
+        ) {
+            PaymentMethodSheetContent(
+                context = paymentContext!!,
+                onSelectMethod = { method ->
+                    viewModel.paymentMiddleware.handlePaymentMethodSelected(method)
+                },
+                onDismiss = { viewModel.paymentMiddleware.dismissPaymentSheet() }
+            )
+        }
+    }
+    
+    // Subscription Middleware Sheet
+    val showSubscriptionSheet by viewModel.subscriptionMiddleware.showSubscriptionSheet.collectAsState()
+    val subscriptionContext by viewModel.subscriptionMiddleware.subscriptionContext.collectAsState()
+    
+    if (showSubscriptionSheet && subscriptionContext != null) {
+        val sheetState = rememberModalBottomSheetState()
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.subscriptionMiddleware.dismissSubscriptionSheet() },
+            sheetState = sheetState
+        ) {
+            SubscriptionSheetContent(
+                context = subscriptionContext!!,
+                onSelectSubscription = { subscriptionId ->
+                    viewModel.subscriptionMiddleware.handleSubscriptionSelected(subscriptionId)
+                },
+                onDismiss = { viewModel.subscriptionMiddleware.dismissSubscriptionSheet() }
             )
         }
     }
@@ -1498,6 +1540,7 @@ private fun ObjectInfoSheetContent(
         } else {
             HtmlContent(
                 html = htmlContent,
+                isHtmlMode = information.isHtmlMode,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -1507,8 +1550,11 @@ private fun ObjectInfoSheetContent(
 @Composable
 private fun HtmlContent(
     html: String,
+    isHtmlMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val finalHtml = if (isHtmlMode) html else wrapInHtmlTemplate(html)
+    
     android.view.ViewGroup.LayoutParams.MATCH_PARENT.let { matchParent ->
         androidx.compose.ui.viewinterop.AndroidView(
             factory = { ctx ->
@@ -1528,9 +1574,106 @@ private fun HtmlContent(
                 }
             },
             update = { webView ->
-                webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                webView.loadDataWithBaseURL(null, finalHtml, "text/html", "UTF-8", null)
             },
             modifier = modifier
         )
     }
 }
+
+private fun wrapInHtmlTemplate(content: String): String = """
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    table {
+      border-collapse: collapse;
+      margin: 1rem 0;
+      overflow: hidden;
+      width: 100%;
+    }
+    td, th {
+      border: 1px solid #e5e7eb;
+      padding: 0.5rem;
+      vertical-align: top;
+      min-width: 100px;
+    }
+    th {
+      background-color: #f3f4f6;
+      font-weight: 600;
+    }
+    blockquote {
+      border-left: 4px solid #9ca3af;
+      padding-left: 1rem;
+      font-style: italic;
+      margin: 1rem 0;
+    }
+    body {
+      max-width: 48rem;
+      margin: 0 auto;
+      padding: 1.5rem 2rem;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 0.375rem;
+      margin: 1rem 0;
+      display: block;
+    }
+    img:not([style*="width"]):not([width]) {
+      width: 100%;
+    }
+    h1 {
+      font-size: 1.875rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+    h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    p {
+      margin-bottom: 0.5rem;
+    }
+    ul {
+      list-style-type: disc;
+      padding-left: 1.5rem;
+    }
+    ol {
+      list-style-type: decimal;
+      padding-left: 1.5rem;
+    }
+    code {
+      background-color: #f3f4f6;
+      padding: 0 0.25rem;
+      border-radius: 0.25rem;
+    }
+    pre {
+      background-color: #f3f4f6;
+      padding: 0.75rem;
+      border-radius: 0.25rem;
+    }
+    hr {
+      margin: 1rem 0;
+      border-color: #e5e7eb;
+    }
+  </style>
+</head>
+<body>
+  $content
+</body>
+</html>
+"""

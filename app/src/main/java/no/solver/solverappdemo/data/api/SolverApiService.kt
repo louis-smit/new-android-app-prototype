@@ -86,4 +86,24 @@ interface SolverApiService {
     // suspend fun executeCommandWithLocation(..., @Body location: LocationData)
     // @PUT("api/Object/{objectId}/Execute/{command}/{input}")
     // suspend fun executeCommandWithInputAndLocation(..., @Body location: LocationData)
+
+    // Tag-based operations for QR/NFC deep linking
+    @GET("api/Object/Tag/{tagId}")
+    suspend fun getObjectByTag(
+        @Path("tagId") tagId: String
+    ): Response<SolverObjectDTO>
+
+    @PUT("api/Object/Execute/{tag}/{command}")
+    suspend fun executeCommandByTag(
+        @Path("tag") tag: String,
+        @Path("command") command: String
+    ): Response<ExecuteResponse>
+
+    // TODO: Add location variant for tag execution
+    // @PUT("api/Object/Execute/{tag}/{command}")
+    // suspend fun executeCommandByTagWithLocation(
+    //     @Path("tag") tag: String,
+    //     @Path("command") command: String,
+    //     @Body location: LocationData
+    // ): Response<ExecuteResponse>
 }
