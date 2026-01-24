@@ -24,6 +24,7 @@ class MiddlewareChain(
             repository: ObjectsRepository,
             paymentMiddleware: PaymentMiddleware,
             subscriptionMiddleware: SubscriptionMiddleware,
+            geofenceMiddleware: GeofenceMiddleware,
             danalockMiddleware: DanalockMiddleware,
             masterlockMiddleware: MasterlockMiddleware,
             onShowStatusSheet: (ExecuteResponse) -> Unit
@@ -35,7 +36,7 @@ class MiddlewareChain(
                 masterlockMiddleware,   // Handle Masterlock Bluetooth commands
                 paymentMiddleware,
                 subscriptionMiddleware,
-                GeofenceMiddleware(),
+                geofenceMiddleware,
                 SetAPIStatusMiddleware(repository),
                 StatusMiddleware(onShowStatusSheet)
             )

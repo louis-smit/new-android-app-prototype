@@ -22,6 +22,7 @@ import no.solver.solverappdemo.data.models.SolverObject
 import no.solver.solverappdemo.data.repositories.ObjectsRepository
 import no.solver.solverappdemo.features.auth.services.SessionManager
 import no.solver.solverappdemo.features.objects.middleware.DanalockMiddleware
+import no.solver.solverappdemo.features.objects.middleware.GeofenceMiddleware
 import no.solver.solverappdemo.features.objects.middleware.MasterlockMiddleware
 import no.solver.solverappdemo.features.objects.middleware.MiddlewareChain
 import no.solver.solverappdemo.features.objects.middleware.PaymentMiddleware
@@ -59,7 +60,10 @@ class ObjectDetailViewModel @Inject constructor(
     private val favouritesStore: FavouritesStore,
     private val danalockMiddleware: DanalockMiddleware,
     private val masterlockMiddleware: MasterlockMiddleware,
-    private val smartLockManager: SmartLockManager
+    private val smartLockManager: SmartLockManager,
+    val paymentMiddleware: PaymentMiddleware,
+    val subscriptionMiddleware: SubscriptionMiddleware,
+    val geofenceMiddleware: GeofenceMiddleware
 ) : ViewModel() {
 
     companion object {
@@ -175,15 +179,19 @@ class ObjectDetailViewModel @Inject constructor(
             )
         }
 
-    // Middleware instances
-    val paymentMiddleware = PaymentMiddleware()
-    val subscriptionMiddleware = SubscriptionMiddleware()
+    // Middleware instances are injected via constructor
 
     private val middlewareChain: MiddlewareChain by lazy {
+        // Set up geofence middleware callback for command re-execution
+        geofenceMiddleware.setReExecuteCallback { command, input ->
+            executeCommandInternal(command, input)
+        }
+        
         MiddlewareChain.createStandardChain(
             repository = objectsRepository,
             paymentMiddleware = paymentMiddleware,
             subscriptionMiddleware = subscriptionMiddleware,
+            geofenceMiddleware = geofenceMiddleware,
             danalockMiddleware = danalockMiddleware,
             masterlockMiddleware = masterlockMiddleware,
             onShowStatusSheet = { response ->
@@ -347,52 +355,61 @@ class ObjectDetailViewModel @Inject constructor(
     }
 
     private fun executeCommand(command: Command, input: String?) {
+        viewModelScope.launch {
+            executeCommandInternal(command, input)
+        }
+    }
+
+    /**
+     * Internal suspend function for command execution.
+     * Can be called from middleware callbacks (e.g., GeofenceMiddleware for override).
+     */
+    private suspend fun executeCommandInternal(command: Command, input: String?) {
         val obj = solverObject ?: run {
             Log.e(TAG, "Cannot execute command: no object loaded")
             return
         }
 
-        viewModelScope.launch {
-            Log.i(TAG, "Executing command '${command.commandName}' on object '${obj.name}'")
-            _executingCommandId.value = command.commandName
-            _commandError.value = null
-            _lastExecuteResponse.value = null
-            _middlewareMessage.value = null
+        Log.i(TAG, "Executing command '${command.commandName}' on object '${obj.name}'" + 
+            if (input != null) " with input: $input" else "")
+        _executingCommandId.value = command.commandName
+        _commandError.value = null
+        _lastExecuteResponse.value = null
+        _middlewareMessage.value = null
 
-            val result = objectsRepository.executeCommand(
-                objectId = obj.id,
-                command = command.commandName,
-                input = input,
-                latitude = null,  // TODO: Get user location if required
-                longitude = null
-            )
+        val result = objectsRepository.executeCommand(
+            objectId = obj.id,
+            command = command.commandName,
+            input = input,
+            latitude = null,  // TODO: Get user location if required
+            longitude = null
+        )
 
-            _executingCommandId.value = null
+        _executingCommandId.value = null
 
-            when (result) {
-                is ApiResult.Success -> {
-                    val response = result.data
-                    Log.i(TAG, "Command '${command.commandName}' executed. Success: ${response.success}")
-                    _lastExecuteResponse.value = response
+        when (result) {
+            is ApiResult.Success -> {
+                val response = result.data
+                Log.i(TAG, "Command '${command.commandName}' executed. Success: ${response.success}")
+                _lastExecuteResponse.value = response
 
-                    // Process through middleware chain
-                    val middlewareResult = middlewareChain.process(response, command, obj)
-                    _middlewareMessage.value = middlewareResult.message
+                // Process through middleware chain
+                val middlewareResult = middlewareChain.process(response, command, obj)
+                _middlewareMessage.value = middlewareResult.message
 
-                    if (middlewareResult.shouldShowDebugUI) {
-                        _showExecuteResponse.value = true
-                    }
-
-                    // Refresh object data if command was successful
-                    if (response.success) {
-                        refresh()
-                    }
+                if (middlewareResult.shouldShowDebugUI) {
+                    _showExecuteResponse.value = true
                 }
-                is ApiResult.Error -> {
-                    val message = result.exception.message ?: "Unknown error"
-                    Log.e(TAG, "Command execution failed: $message")
-                    _commandError.value = "Failed to execute command: $message"
+
+                // Refresh object data if command was successful
+                if (response.success) {
+                    refresh()
                 }
+            }
+            is ApiResult.Error -> {
+                val message = result.exception.message ?: "Unknown error"
+                Log.e(TAG, "Command execution failed: $message")
+                _commandError.value = "Failed to execute command: $message"
             }
         }
     }
@@ -472,7 +489,9 @@ class ObjectDetailViewModel @Inject constructor(
     fun handleExplicitSubscription() {
         val obj = solverObject ?: return
         Log.i(TAG, "Handling explicit subscription for object ${obj.id}")
-        subscriptionMiddleware.handleSubscriptionSelected("explicit")
+        viewModelScope.launch {
+            subscriptionMiddleware.triggerExplicitSubscription(obj)
+        }
     }
 
     // MARK: - Smart Lock Actions

@@ -36,8 +36,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -50,6 +52,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.deeplink.DeepLinkViewModel
 import no.solver.solverappdemo.data.models.SolverObject
 import no.solver.solverappdemo.features.auth.LoginScreen
@@ -69,7 +72,7 @@ import no.solver.solverappdemo.features.objects.ObjectsScreen
 import no.solver.solverappdemo.features.objects.detail.ObjectDetailScreen
 import no.solver.solverappdemo.ui.components.PaymentMethodSheetContent
 import no.solver.solverappdemo.ui.components.StatusBottomSheetContent
-import no.solver.solverappdemo.ui.components.SubscriptionSheetContent
+import no.solver.solverappdemo.ui.components.SubscriptionOptionsSheetContent
 
 private const val SPLASH_DELAY_MS = 500L
 private const val TRANSITION_DURATION_MS = 300
@@ -461,16 +464,22 @@ fun AppNavHost(
         // Payment Middleware Sheet (for deep link commands that require payment)
         val showPaymentSheet by deepLinkViewModel.paymentMiddleware.showPaymentSheet.collectAsState()
         val paymentContext by deepLinkViewModel.paymentMiddleware.paymentContext.collectAsState()
+        val paymentAvailableMethods by deepLinkViewModel.paymentMiddleware.availableMethods.collectAsState()
+        val context = LocalContext.current
+        val coroutineScope = rememberCoroutineScope()
         
-        if (showPaymentSheet && paymentContext != null) {
+        if (showPaymentSheet && paymentContext != null && paymentAvailableMethods != null) {
             ModalBottomSheet(
                 onDismissRequest = { deepLinkViewModel.paymentMiddleware.dismissPaymentSheet() },
                 sheetState = rememberModalBottomSheetState()
             ) {
                 PaymentMethodSheetContent(
                     context = paymentContext!!,
+                    availableMethods = paymentAvailableMethods!!,
                     onSelectMethod = { method ->
-                        deepLinkViewModel.paymentMiddleware.handlePaymentMethodSelected(method)
+                        coroutineScope.launch {
+                            deepLinkViewModel.paymentMiddleware.handlePaymentMethodSelected(method, context)
+                        }
                     },
                     onDismiss = { deepLinkViewModel.paymentMiddleware.dismissPaymentSheet() }
                 )
@@ -478,20 +487,20 @@ fun AppNavHost(
         }
         
         // Subscription Middleware Sheet (for deep link commands that require subscription)
-        val showSubscriptionSheet by deepLinkViewModel.subscriptionMiddleware.showSubscriptionSheet.collectAsState()
+        val showSubscriptionSheet by deepLinkViewModel.subscriptionMiddleware.showSubscriptionOptionsSheet.collectAsState()
         val subscriptionContext by deepLinkViewModel.subscriptionMiddleware.subscriptionContext.collectAsState()
         
         if (showSubscriptionSheet && subscriptionContext != null) {
             ModalBottomSheet(
-                onDismissRequest = { deepLinkViewModel.subscriptionMiddleware.dismissSubscriptionSheet() },
+                onDismissRequest = { deepLinkViewModel.subscriptionMiddleware.dismissSubscriptionOptionsSheet() },
                 sheetState = rememberModalBottomSheetState()
             ) {
-                SubscriptionSheetContent(
+                SubscriptionOptionsSheetContent(
                     context = subscriptionContext!!,
-                    onSelectSubscription = { subscriptionId ->
-                        deepLinkViewModel.subscriptionMiddleware.handleSubscriptionSelected(subscriptionId)
+                    onSelectOption = { option ->
+                        deepLinkViewModel.subscriptionMiddleware.handleSubscriptionSelected(option)
                     },
-                    onDismiss = { deepLinkViewModel.subscriptionMiddleware.dismissSubscriptionSheet() }
+                    onDismiss = { deepLinkViewModel.subscriptionMiddleware.dismissSubscriptionOptionsSheet() }
                 )
             }
         }

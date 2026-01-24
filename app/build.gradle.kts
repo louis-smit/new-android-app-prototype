@@ -154,6 +154,9 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    // Stripe Payments
+    implementation(libs.stripe.android)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockk)

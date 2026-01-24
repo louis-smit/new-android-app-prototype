@@ -60,6 +60,39 @@
                     android:host="solver.no"
                     android:pathPrefix="/qr/" />
             </intent-filter>
+
+            <!-- Payment callback: solverapp://vipps/callback -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="solverapp"
+                    android:host="vipps"
+                    android:pathPrefix="/callback" />
+            </intent-filter>
+
+            <!-- Payment callback: solverapp://card/callback -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="solverapp"
+                    android:host="card"
+                    android:pathPrefix="/callback" />
+            </intent-filter>
+
+            <!-- Payment callback: solverapp://stripe/callback -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="solverapp"
+                    android:host="stripe"
+                    android:pathPrefix="/callback" />
+            </intent-filter>
         </activity>
 
         <!-- AppAuth redirect handler for Vipps OAuth (handles web fallback automatically) -->

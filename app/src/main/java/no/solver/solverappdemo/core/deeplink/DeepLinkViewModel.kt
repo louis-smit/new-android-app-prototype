@@ -12,11 +12,13 @@ import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.network.ApiResult
 import no.solver.solverappdemo.data.models.Command
 import no.solver.solverappdemo.data.models.ExecuteResponse
+import no.solver.solverappdemo.data.models.PaymentMethod
 import no.solver.solverappdemo.data.models.SolverObject
 import no.solver.solverappdemo.data.repositories.ObjectsRepository
 import no.solver.solverappdemo.data.repositories.TagRepository
 import no.solver.solverappdemo.features.auth.services.SessionManager
 import no.solver.solverappdemo.features.objects.middleware.DanalockMiddleware
+import no.solver.solverappdemo.features.objects.middleware.GeofenceMiddleware
 import no.solver.solverappdemo.features.objects.middleware.MasterlockMiddleware
 import no.solver.solverappdemo.features.objects.middleware.MiddlewareChain
 import no.solver.solverappdemo.features.objects.middleware.PaymentMiddleware
@@ -37,7 +39,11 @@ data class DeepLinkUiState(
     /** The response for the status sheet */
     val responseForSheet: ExecuteResponse? = null,
     /** Error message if something went wrong */
-    val error: String? = null
+    val error: String? = null,
+    /** Payment callback state */
+    val paymentCallbackMethod: PaymentMethod? = null,
+    val paymentCallbackReference: String? = null,
+    val showPaymentCallback: Boolean = false
 )
 
 /**
@@ -60,7 +66,10 @@ class DeepLinkViewModel @Inject constructor(
     private val objectsRepository: ObjectsRepository,
     private val sessionManager: SessionManager,
     private val danalockMiddleware: DanalockMiddleware,
-    private val masterlockMiddleware: MasterlockMiddleware
+    private val masterlockMiddleware: MasterlockMiddleware,
+    private val geofenceMiddleware: GeofenceMiddleware,
+    val paymentMiddleware: PaymentMiddleware,
+    val subscriptionMiddleware: SubscriptionMiddleware
 ) : ViewModel() {
 
     companion object {
@@ -70,15 +79,12 @@ class DeepLinkViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DeepLinkUiState())
     val uiState: StateFlow<DeepLinkUiState> = _uiState.asStateFlow()
 
-    // Middleware instances - exposed for UI binding in AppNavHost
-    val paymentMiddleware = PaymentMiddleware()
-    val subscriptionMiddleware = SubscriptionMiddleware()
-
     private val middlewareChain: MiddlewareChain by lazy {
         MiddlewareChain.createStandardChain(
             repository = objectsRepository,
             paymentMiddleware = paymentMiddleware,
             subscriptionMiddleware = subscriptionMiddleware,
+            geofenceMiddleware = geofenceMiddleware,
             danalockMiddleware = danalockMiddleware,
             masterlockMiddleware = masterlockMiddleware,
             onShowStatusSheet = { response ->
@@ -119,7 +125,35 @@ class DeepLinkViewModel @Inject constructor(
                 Log.i(TAG, "🔓 QR command: ${deepLink.command}, tag: ${deepLink.tag}")
                 executeQrCommand(deepLink.command, deepLink.tag)
             }
+            is DeepLink.PaymentCallback -> {
+                Log.i(TAG, "💳 Payment callback: ${deepLink.method}, reference: ${deepLink.reference}")
+                handlePaymentCallback(deepLink.method, deepLink.reference)
+            }
         }
+    }
+
+    /**
+     * Handle payment callback from external payment flow (Vipps/Card).
+     */
+    private fun handlePaymentCallback(method: PaymentMethod, reference: String) {
+        _uiState.value = _uiState.value.copy(
+            paymentCallbackMethod = method,
+            paymentCallbackReference = reference,
+            showPaymentCallback = true
+        )
+        // Also notify the payment middleware
+        paymentMiddleware.handlePaymentCallback(method, reference)
+    }
+
+    /**
+     * Dismiss payment callback screen.
+     */
+    fun dismissPaymentCallback() {
+        _uiState.value = _uiState.value.copy(
+            paymentCallbackMethod = null,
+            paymentCallbackReference = null,
+            showPaymentCallback = false
+        )
     }
 
     /**

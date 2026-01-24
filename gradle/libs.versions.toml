@@ -45,6 +45,9 @@ coil = "2.7.0"
 # Room Database
 room = "2.6.1"
 
+# Stripe
+stripe = "21.7.1"
+
 # Testing
 mockk = "1.13.13"
 coroutinesTest = "1.9.0"
@@ -106,6 +109,9 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+
+# Stripe
+stripe-android = { group = "com.stripe", name = "stripe-android", version.ref = "stripe" }
 
 # Testing
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }

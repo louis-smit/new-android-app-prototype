@@ -1,5 +1,6 @@
 package no.solver.solverappdemo.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,12 +10,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -24,24 +26,30 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import no.solver.solverappdemo.R
+import no.solver.solverappdemo.data.models.AvailablePaymentMethods
+import no.solver.solverappdemo.data.models.PaymentMethod
+import no.solver.solverappdemo.data.models.SubscriptionOption
 import no.solver.solverappdemo.features.objects.middleware.PaymentContext
 import no.solver.solverappdemo.features.objects.middleware.SubscriptionContext
 import no.solver.solverappdemo.ui.theme.SolverAppTheme
 
 /**
  * Sheet content for selecting a payment method.
- * Matches iOS PaymentMethodSheet.
+ * Matches iOS PaymentMethodSheet with dynamic methods.
  */
 @Composable
 fun PaymentMethodSheetContent(
     context: PaymentContext,
-    onSelectMethod: (String) -> Unit,
+    availableMethods: AvailablePaymentMethods,
+    onSelectMethod: (PaymentMethod) -> Unit,
     onDismiss: () -> Unit,
+    isLoading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -58,58 +66,51 @@ fun PaymentMethodSheetContent(
             modifier = Modifier.size(60.dp),
             tint = MaterialTheme.colorScheme.primary
         )
-        
+
         Spacer(modifier = Modifier.height(12.dp))
-        
+
         Text(
             text = "Payment Required",
             style = MaterialTheme.typography.titleLarge
         )
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         Text(
-            text = "Pay ${context.price} to execute ${context.command}",
+            text = context.message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        
-        // Payment method buttons
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Vipps
-            PaymentMethodButton(
-                name = "Vipps",
-                iconResId = R.drawable.ic_vipps,
-                onClick = { onSelectMethod("vipps") }
+
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.padding(vertical = 24.dp)
             )
-            
-            // Card
-            PaymentMethodButton(
-                name = "Card",
-                iconResId = R.drawable.ic_payment,
-                onClick = { onSelectMethod("card") }
-            )
-            
-            // Stripe (if available)
-            PaymentMethodButton(
-                name = "Stripe",
-                iconResId = R.drawable.ic_payment,
-                onClick = { onSelectMethod("stripe") }
-            )
+        } else {
+            // Payment method buttons - only show available methods
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                availableMethods.methods.forEach { method ->
+                    PaymentMethodButton(
+                        method = method,
+                        onClick = { onSelectMethod(method) }
+                    )
+                }
+            }
         }
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        
+
         // Cancel button
         TextButton(
             onClick = onDismiss,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
         ) {
             Text("Cancel")
         }
@@ -118,8 +119,7 @@ fun PaymentMethodSheetContent(
 
 @Composable
 private fun PaymentMethodButton(
-    name: String,
-    iconResId: Int,
+    method: PaymentMethod,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -127,7 +127,8 @@ private fun PaymentMethodButton(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = ButtonDefaults.outlinedButtonBorder(enabled = true)
+        border = ButtonDefaults.outlinedButtonBorder(enabled = true),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier
@@ -135,21 +136,41 @@ private fun PaymentMethodButton(
                 .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                painter = painterResource(id = iconResId),
-                contentDescription = null,
-                modifier = Modifier.size(28.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            
+            // Use custom icon for Vipps, system icons for others
+            when (method) {
+                PaymentMethod.VIPPS -> {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_vipps),
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                PaymentMethod.CARD -> {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_payment),
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                PaymentMethod.STRIPE -> {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_payment),
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = Color(0xFF635BFF) // Stripe purple
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.width(16.dp))
-            
+
             Text(
-                text = name,
+                text = method.displayName,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f)
             )
-            
+
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null,
@@ -161,13 +182,146 @@ private fun PaymentMethodButton(
 
 /**
  * Sheet content for selecting a subscription option.
- * Matches iOS subscription selection sheet.
+ * Matches iOS SubscriptionOptionsSheet.
  */
 @Composable
-fun SubscriptionSheetContent(
+fun SubscriptionOptionsSheetContent(
     context: SubscriptionContext,
-    onSelectSubscription: (String) -> Unit,
+    onSelectOption: (SubscriptionOption) -> Unit,
     onDismiss: () -> Unit,
+    isLoading: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Header icon
+        Icon(
+            painter = painterResource(id = R.drawable.ic_subscription),
+            contentDescription = null,
+            modifier = Modifier.size(60.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "Choose subscription",
+            style = MaterialTheme.typography.titleLarge
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = context.message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.padding(vertical = 24.dp)
+            )
+        } else {
+            // Subscription options
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(context.subscriptionOptions) { option ->
+                    SubscriptionOptionButton(
+                        option = option,
+                        onClick = { onSelectOption(option) }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Cancel button
+        TextButton(
+            onClick = onDismiss,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
+        ) {
+            Text("Cancel")
+        }
+    }
+}
+
+@Composable
+private fun SubscriptionOptionButton(
+    option: SubscriptionOption,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = ButtonDefaults.outlinedButtonBorder(enabled = true),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = option.displayTitle,
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                option.subscriptionType?.let { type ->
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = type.displayName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Text(
+                text = option.displayPrice,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/**
+ * Sheet content for selecting payment method for a subscription.
+ * Similar to PaymentMethodSheetContent but for subscriptions.
+ */
+@Composable
+fun SubscriptionPaymentMethodSheetContent(
+    subscription: SubscriptionOption,
+    availableMethods: AvailablePaymentMethods,
+    onSelectMethod: (PaymentMethod) -> Unit,
+    onDismiss: () -> Unit,
+    isLoading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -184,87 +338,53 @@ fun SubscriptionSheetContent(
             modifier = Modifier.size(60.dp),
             tint = MaterialTheme.colorScheme.primary
         )
-        
+
         Spacer(modifier = Modifier.height(12.dp))
-        
+
         Text(
-            text = "Subscription Required",
+            text = "Select Payment Method",
             style = MaterialTheme.typography.titleLarge
         )
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         Text(
-            text = "A subscription is required to use this feature",
+            text = "Pay ${subscription.displayPrice} for ${subscription.displayTitle}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        
-        // Subscription options
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // TODO: Display actual subscription options from context
-            // For now, show a placeholder
-            SubscriptionOptionButton(
-                title = "Monthly Subscription",
-                description = "Unlimited access for 30 days",
-                onClick = { onSelectSubscription("monthly") }
+
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.padding(vertical = 24.dp)
             )
-            
-            SubscriptionOptionButton(
-                title = "Annual Subscription",
-                description = "Unlimited access for 1 year (save 20%)",
-                onClick = { onSelectSubscription("annual") }
-            )
+        } else {
+            // Payment method buttons - only show available methods
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                availableMethods.methods.forEach { method ->
+                    PaymentMethodButton(
+                        method = method,
+                        onClick = { onSelectMethod(method) }
+                    )
+                }
+            }
         }
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        
+
         // Cancel button
         TextButton(
             onClick = onDismiss,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isLoading
         ) {
             Text("Cancel")
-        }
-    }
-}
-
-@Composable
-private fun SubscriptionOptionButton(
-    title: String,
-    description: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium
-            )
-            
-            Spacer(modifier = Modifier.height(4.dp))
-            
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
@@ -277,10 +397,15 @@ private fun PaymentMethodSheetContentPreview() {
     SolverAppTheme {
         PaymentMethodSheetContent(
             context = PaymentContext(
-                price = "50 NOK",
+                price = "50",
                 command = "unlock",
                 objectId = 123,
                 vendingTransId = null
+            ),
+            availableMethods = AvailablePaymentMethods(
+                hasVipps = true,
+                hasCard = true,
+                hasStripe = true
             ),
             onSelectMethod = {},
             onDismiss = {}
@@ -290,14 +415,50 @@ private fun PaymentMethodSheetContentPreview() {
 
 @Preview(showBackground = true)
 @Composable
-private fun SubscriptionSheetContentPreview() {
+private fun SubscriptionOptionsSheetContentPreview() {
     SolverAppTheme {
-        SubscriptionSheetContent(
+        SubscriptionOptionsSheetContent(
             context = SubscriptionContext(
                 command = "unlock",
-                objectId = 123
+                objectId = 123,
+                subscriptionOptions = listOf(
+                    SubscriptionOption(
+                        objectSubscriptionId = 1,
+                        subscriptionTypeId = 1,
+                        description = "Monthly Access",
+                        amount = 99.0
+                    ),
+                    SubscriptionOption(
+                        objectSubscriptionId = 2,
+                        subscriptionTypeId = 3,
+                        description = "Recurring Monthly",
+                        amount = 89.0
+                    )
+                )
             ),
-            onSelectSubscription = {},
+            onSelectOption = {},
+            onDismiss = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun SubscriptionPaymentMethodSheetContentPreview() {
+    SolverAppTheme {
+        SubscriptionPaymentMethodSheetContent(
+            subscription = SubscriptionOption(
+                objectSubscriptionId = 1,
+                subscriptionTypeId = 1,
+                description = "Monthly Access",
+                amount = 99.0
+            ),
+            availableMethods = AvailablePaymentMethods(
+                hasVipps = true,
+                hasCard = true,
+                hasStripe = false
+            ),
+            onSelectMethod = {},
             onDismiss = {}
         )
     }

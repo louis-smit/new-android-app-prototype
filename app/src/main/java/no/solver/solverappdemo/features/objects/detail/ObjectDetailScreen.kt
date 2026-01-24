@@ -91,7 +91,8 @@ import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockStatus
 import no.solver.solverappdemo.ui.components.ObjectIcon
 import no.solver.solverappdemo.ui.components.PaymentMethodSheetContent
 import no.solver.solverappdemo.ui.components.SmartLockCard
-import no.solver.solverappdemo.ui.components.SubscriptionSheetContent
+import no.solver.solverappdemo.ui.components.SubscriptionOptionsSheetContent
+import no.solver.solverappdemo.ui.components.SubscriptionPaymentMethodSheetContent
 import no.solver.solverappdemo.ui.theme.SolverAppTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -460,8 +461,11 @@ fun ObjectDetailScreen(
     // Payment Middleware Sheet
     val showPaymentSheet by viewModel.paymentMiddleware.showPaymentSheet.collectAsState()
     val paymentContext by viewModel.paymentMiddleware.paymentContext.collectAsState()
+    val paymentAvailableMethods by viewModel.paymentMiddleware.availableMethods.collectAsState()
+    val paymentIsLoading by viewModel.paymentMiddleware.isLoading.collectAsState()
+    // Use existing context and scope from above
     
-    if (showPaymentSheet && paymentContext != null) {
+    if (showPaymentSheet && paymentContext != null && paymentAvailableMethods != null) {
         val sheetState = rememberModalBottomSheetState()
         ModalBottomSheet(
             onDismissRequest = { viewModel.paymentMiddleware.dismissPaymentSheet() },
@@ -469,32 +473,132 @@ fun ObjectDetailScreen(
         ) {
             PaymentMethodSheetContent(
                 context = paymentContext!!,
+                availableMethods = paymentAvailableMethods!!,
+                isLoading = paymentIsLoading,
                 onSelectMethod = { method ->
-                    viewModel.paymentMiddleware.handlePaymentMethodSelected(method)
+                    scope.launch {
+                        viewModel.paymentMiddleware.handlePaymentMethodSelected(method, context)
+                    }
                 },
                 onDismiss = { viewModel.paymentMiddleware.dismissPaymentSheet() }
             )
         }
     }
     
-    // Subscription Middleware Sheet
-    val showSubscriptionSheet by viewModel.subscriptionMiddleware.showSubscriptionSheet.collectAsState()
+    // Subscription Options Sheet
+    val showSubscriptionOptionsSheet by viewModel.subscriptionMiddleware.showSubscriptionOptionsSheet.collectAsState()
     val subscriptionContext by viewModel.subscriptionMiddleware.subscriptionContext.collectAsState()
+    val subscriptionIsLoading by viewModel.subscriptionMiddleware.isLoading.collectAsState()
     
-    if (showSubscriptionSheet && subscriptionContext != null) {
+    if (showSubscriptionOptionsSheet && subscriptionContext != null) {
         val sheetState = rememberModalBottomSheetState()
         ModalBottomSheet(
-            onDismissRequest = { viewModel.subscriptionMiddleware.dismissSubscriptionSheet() },
+            onDismissRequest = { viewModel.subscriptionMiddleware.dismissSubscriptionOptionsSheet() },
             sheetState = sheetState
         ) {
-            SubscriptionSheetContent(
+            SubscriptionOptionsSheetContent(
                 context = subscriptionContext!!,
-                onSelectSubscription = { subscriptionId ->
-                    viewModel.subscriptionMiddleware.handleSubscriptionSelected(subscriptionId)
+                isLoading = subscriptionIsLoading,
+                onSelectOption = { option ->
+                    viewModel.subscriptionMiddleware.handleSubscriptionSelected(option)
                 },
-                onDismiss = { viewModel.subscriptionMiddleware.dismissSubscriptionSheet() }
+                onDismiss = { viewModel.subscriptionMiddleware.dismissSubscriptionOptionsSheet() }
             )
         }
+    }
+
+    // Subscription Payment Method Sheet
+    val showSubPaymentSheet by viewModel.subscriptionMiddleware.showPaymentMethodSheet.collectAsState()
+    val selectedSubscription by viewModel.subscriptionMiddleware.selectedSubscription.collectAsState()
+    val subscriptionPaymentMethods by viewModel.subscriptionMiddleware.availableMethods.collectAsState()
+
+    if (showSubPaymentSheet && selectedSubscription != null && subscriptionPaymentMethods != null) {
+        val sheetState = rememberModalBottomSheetState()
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.subscriptionMiddleware.dismissPaymentMethodSheet() },
+            sheetState = sheetState
+        ) {
+            SubscriptionPaymentMethodSheetContent(
+                subscription = selectedSubscription!!,
+                availableMethods = subscriptionPaymentMethods!!,
+                isLoading = subscriptionIsLoading,
+                onSelectMethod = { method ->
+                    scope.launch {
+                        viewModel.subscriptionMiddleware.handlePaymentMethodSelected(method, context)
+                    }
+                },
+                onDismiss = { viewModel.subscriptionMiddleware.dismissPaymentMethodSheet() }
+            )
+        }
+    }
+
+    // Geofence Override Dialog
+    val showGeofenceDialog by viewModel.geofenceMiddleware.showGeofenceDialog.collectAsState()
+    val geofenceContext by viewModel.geofenceMiddleware.geofenceContext.collectAsState()
+    val geofenceIsOverriding by viewModel.geofenceMiddleware.isOverriding.collectAsState()
+
+    if (showGeofenceDialog && geofenceContext != null) {
+        AlertDialog(
+            onDismissRequest = { 
+                if (!geofenceIsOverriding) {
+                    viewModel.geofenceMiddleware.cancelOverride()
+                }
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text(geofenceContext!!.title) },
+            text = { Text(geofenceContext!!.message) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            viewModel.geofenceMiddleware.confirmOverride()
+                        }
+                    },
+                    enabled = !geofenceIsOverriding
+                ) {
+                    if (geofenceIsOverriding) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text("Override")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.geofenceMiddleware.cancelOverride() },
+                    enabled = !geofenceIsOverriding
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Geofence Error Alert
+    val showGeofenceError by viewModel.geofenceMiddleware.showErrorAlert.collectAsState()
+    val geofenceErrorMessage by viewModel.geofenceMiddleware.errorMessage.collectAsState()
+
+    if (showGeofenceError && geofenceErrorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.geofenceMiddleware.dismissErrorAlert() },
+            title = { Text("Override Failed") },
+            text = { Text(geofenceErrorMessage!!) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.geofenceMiddleware.dismissErrorAlert() }) {
+                    Text("OK")
+                }
+            }
+        )
     }
 }
 

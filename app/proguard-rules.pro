@@ -23,6 +23,7 @@
 # MSAL / Microsoft Identity - suppress missing annotation warnings
 -dontwarn edu.umd.cs.findbugs.annotations.**
 -dontwarn com.google.auto.value.AutoValue
+-dontwarn net.jcip.annotations.**
 
 # Keep MSAL classes
 -keep class com.microsoft.identity.** { *; }
