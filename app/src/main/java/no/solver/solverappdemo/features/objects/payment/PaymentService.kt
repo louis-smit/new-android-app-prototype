@@ -3,6 +3,7 @@ package no.solver.solverappdemo.features.objects.payment
 import android.util.Log
 import no.solver.solverappdemo.data.api.ApiClientManager
 import no.solver.solverappdemo.data.models.InitiatePaymentRequest
+import no.solver.solverappdemo.data.models.ExecuteResponse
 import no.solver.solverappdemo.data.models.PaymentMethod
 import no.solver.solverappdemo.data.models.PaymentResponse
 import no.solver.solverappdemo.data.models.PaymentStatus
@@ -147,6 +148,58 @@ class PaymentService @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to check Stripe payment status: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    // MARK: - Capture Payment (Executes Command)
+
+    /**
+     * Captures a Card payment and executes the associated command.
+     * Returns ExecuteResponse from the server.
+     */
+    suspend fun captureCardPayment(reference: String): Result<ExecuteResponse> {
+        Log.i(TAG, "💳 Capturing Card payment: $reference")
+        return try {
+            val apiService = getApiService()
+            val response = apiService.captureCardPayment(reference)
+            if (response.isSuccessful) {
+                response.body()?.let { executeResponse ->
+                    Log.i(TAG, "✅ Card payment captured, command executed: ${executeResponse.success}")
+                    Result.success(executeResponse)
+                } ?: Result.failure(Exception("Empty response body"))
+            } else {
+                val errorMessage = "Failed to capture payment: ${response.code()} ${response.message()}"
+                Log.e(TAG, "❌ $errorMessage")
+                Result.failure(Exception(errorMessage))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to capture Card payment: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Captures a Vipps payment and executes the associated command.
+     * Returns ExecuteResponse from the server.
+     */
+    suspend fun captureVippsPayment(orderId: String): Result<ExecuteResponse> {
+        Log.i(TAG, "💳 Capturing Vipps payment: $orderId")
+        return try {
+            val apiService = getApiService()
+            val response = apiService.captureVippsPayment(orderId)
+            if (response.isSuccessful) {
+                response.body()?.let { executeResponse ->
+                    Log.i(TAG, "✅ Vipps payment captured, command executed: ${executeResponse.success}")
+                    Result.success(executeResponse)
+                } ?: Result.failure(Exception("Empty response body"))
+            } else {
+                val errorMessage = "Failed to capture payment: ${response.code()} ${response.message()}"
+                Log.e(TAG, "❌ $errorMessage")
+                Result.failure(Exception(errorMessage))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to capture Vipps payment: ${e.message}", e)
             Result.failure(e)
         }
     }

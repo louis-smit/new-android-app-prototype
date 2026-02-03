@@ -162,6 +162,17 @@ interface SolverApiService {
         @Path("reference") reference: String
     ): Response<StripeOrder>
 
+    // Payment capture (executes command after payment authorized)
+    @POST("api/Vipps/CardPayment/{reference}/Capture")
+    suspend fun captureCardPayment(
+        @Path("reference") reference: String
+    ): Response<ExecuteResponse>
+
+    @POST("api/Vipps/VippsPayment/{orderId}/Capture")
+    suspend fun captureVippsPayment(
+        @Path("orderId") orderId: String
+    ): Response<ExecuteResponse>
+
     // ==================== SUBSCRIPTION ENDPOINTS ====================
 
     // Get available subscription options for an object

@@ -6,8 +6,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,7 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LabelFiltersSheet(
     filters: List<LabelFilter>,
@@ -179,16 +179,16 @@ private fun BottomSheetDragHandle() {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ActiveFiltersChips(
     filters: List<LabelFilter>,
     onRemoveFilter: (filterId: String, optionValue: String) -> Unit
 ) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         filters.forEach { filter ->
             filter.options.filter { it.isChecked }.forEach { option ->
@@ -258,8 +258,8 @@ private fun ExpandableFilterSection(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onOptionChange(option.value, !option.isChecked) }
-                            .padding(vertical = 4.dp),
+                            .height(36.dp)
+                            .clickable { onOptionChange(option.value, !option.isChecked) },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
@@ -268,8 +268,7 @@ private fun ExpandableFilterSection(
                         )
                         Text(
                             text = option.value,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(start = 8.dp)
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }

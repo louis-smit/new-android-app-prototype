@@ -100,6 +100,7 @@ class PaymentCallbackViewModel @Inject constructor(
                 isRecurringSubscription = isRecurring
             )
 
+            // When status is CAPTURED/ACTIVE, the server has already executed the command
             _state.value = when {
                 status.isSuccess -> PaymentCallbackState.Success
                 status == PaymentStatus.STOPPED || status == PaymentStatus.CANCELLED -> {

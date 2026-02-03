@@ -23,12 +23,14 @@ class StripePaymentHandler @Inject constructor() {
 
     private var paymentSheet: PaymentSheet? = null
     private var pendingCallback: ((PaymentResult) -> Unit)? = null
+    private var activity: Activity? = null
 
     /**
      * Initialize PaymentSheet for an activity.
      * Must be called in onCreate before presenting.
      */
     fun initialize(activity: Activity) {
+        this.activity = activity
         paymentSheet = PaymentSheet(activity as androidx.activity.ComponentActivity) { result ->
             handlePaymentResult(result)
         }
@@ -63,6 +65,9 @@ class StripePaymentHandler @Inject constructor() {
         }
 
         pendingCallback = callback
+
+        // Initialize Stripe with publishable key before presenting
+        activity?.let { PaymentConfiguration.init(it, publishableKey) }
 
         // Configure payment sheet
         val configuration = PaymentSheet.Configuration(

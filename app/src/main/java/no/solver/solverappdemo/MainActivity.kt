@@ -10,8 +10,10 @@ import androidx.activity.viewModels
 import dagger.hilt.android.AndroidEntryPoint
 import no.solver.solverappdemo.core.deeplink.DeepLinkParser
 import no.solver.solverappdemo.core.deeplink.DeepLinkViewModel
+import no.solver.solverappdemo.features.objects.payment.StripePaymentHandler
 import no.solver.solverappdemo.ui.navigation.AppNavHost
 import no.solver.solverappdemo.ui.theme.SolverAppTheme
+import javax.inject.Inject
 
 /**
  * Main activity for the SolverApp.
@@ -34,12 +36,18 @@ class MainActivity : ComponentActivity() {
         private const val TAG = "MainActivity"
     }
 
+    @Inject
+    lateinit var stripePaymentHandler: StripePaymentHandler
+
     // Deep link handler ViewModel - shared with Compose via hiltViewModel()
     private val deepLinkViewModel: DeepLinkViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        // Initialize Stripe PaymentSheet - must be done in onCreate before presenting
+        stripePaymentHandler.initialize(this)
         
         // Handle deep link from cold start
         handleDeepLinkIntent(intent)
