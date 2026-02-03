@@ -117,6 +117,7 @@ fun ObjectDetailScreen(
     val showDetailsSheet by viewModel.showDetailsSheet.collectAsState()
     val isFavourite by viewModel.isFavourite.collectAsState()
     val showInfoSheet by viewModel.showInfoSheet.collectAsState()
+    val isDebugModeEnabled by viewModel.isDebugModeEnabled.collectAsState()
 
     // Smart lock state
     val lockBrand by viewModel.lockBrand.collectAsState()
@@ -368,6 +369,7 @@ fun ObjectDetailScreen(
                         lockCapabilities = lockCapabilities,
                         cachedOperation = cachedOperation,
                         cachedUnlockResult = cachedUnlockResult,
+                        isDebugModeEnabled = isDebugModeEnabled,
                         onCommandClick = { command ->
                             viewModel.handleCommand(command)
                         },
@@ -404,8 +406,8 @@ fun ObjectDetailScreen(
         )
     }
 
-    // Execute Response Bottom Sheet
-    if (showExecuteResponse && lastExecuteResponse != null) {
+    // Execute Response Bottom Sheet (only visible if debug mode enabled)
+    if (isDebugModeEnabled && showExecuteResponse && lastExecuteResponse != null) {
         val sheetState = rememberModalBottomSheetState()
         ModalBottomSheet(
             onDismissRequest = { viewModel.dismissExecuteResponse() },
@@ -600,6 +602,100 @@ fun ObjectDetailScreen(
             }
         )
     }
+
+    // Payment Success Alert
+    val showPaymentSuccess by viewModel.paymentMiddleware.showSuccessAlert.collectAsState()
+
+    if (showPaymentSuccess) {
+        AlertDialog(
+            onDismissRequest = { viewModel.paymentMiddleware.dismissSuccessAlert() },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text("Payment Successful") },
+            text = { Text("Your payment was successful") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.paymentMiddleware.dismissSuccessAlert() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    // Payment Error Alert
+    val showPaymentError by viewModel.paymentMiddleware.showErrorAlert.collectAsState()
+    val paymentErrorMessage by viewModel.paymentMiddleware.errorMessage.collectAsState()
+
+    if (showPaymentError) {
+        AlertDialog(
+            onDismissRequest = { viewModel.paymentMiddleware.dismissErrorAlert() },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Payment Failed") },
+            text = { Text(paymentErrorMessage ?: "Payment was unsuccessful") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.paymentMiddleware.dismissErrorAlert() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    // Subscription Success Alert
+    val showSubscriptionSuccess by viewModel.subscriptionMiddleware.showSuccessAlert.collectAsState()
+
+    if (showSubscriptionSuccess) {
+        AlertDialog(
+            onDismissRequest = { viewModel.subscriptionMiddleware.dismissSuccessAlert() },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = { Text("Subscription Successful") },
+            text = { Text("Your subscription payment was successful") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.subscriptionMiddleware.dismissSuccessAlert() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    // Subscription Error Alert
+    val showSubscriptionError by viewModel.subscriptionMiddleware.showErrorAlert.collectAsState()
+    val subscriptionErrorMessage by viewModel.subscriptionMiddleware.errorMessage.collectAsState()
+
+    if (showSubscriptionError) {
+        AlertDialog(
+            onDismissRequest = { viewModel.subscriptionMiddleware.dismissErrorAlert() },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Subscription Failed") },
+            text = { Text(subscriptionErrorMessage ?: "Subscription payment was unsuccessful") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.subscriptionMiddleware.dismissErrorAlert() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -612,6 +708,7 @@ private fun ObjectDetailContent(
     lockCapabilities: SmartLockCapabilities?,
     cachedOperation: CachedOperation,
     cachedUnlockResult: String?,
+    isDebugModeEnabled: Boolean,
     onCommandClick: (Command) -> Unit,
     onOpenInMaps: (Double, Double, String) -> Unit,
     onUnlock: () -> Unit,
@@ -641,6 +738,7 @@ private fun ObjectDetailContent(
                 capabilities = lockCapabilities,
                 operation = cachedOperation,
                 debugResult = cachedUnlockResult,
+                isDebugModeEnabled = isDebugModeEnabled,
                 onUnlock = onUnlock,
                 onLock = onLock,
                 onCheckStatus = onCheckStatus,

@@ -64,6 +64,36 @@ class SessionManager @Inject constructor(
         environment: AuthEnvironment,
         tokens: AuthTokens
     ): Session {
+        // Check for existing session with same user identity (by email or userId)
+        val existingSession = findExistingSession(provider, tokens)
+        
+        if (existingSession != null) {
+            // Update existing session with new tokens instead of creating duplicate
+            val updatedSession = existingSession.copy(
+                tokens = tokens,
+                environment = environment,
+                isActive = true
+            )
+            
+            dataStore.edit { prefs ->
+                val sessions = getSessions(prefs).toMutableList()
+                val index = sessions.indexOfFirst { it.id == existingSession.id }
+                if (index >= 0) {
+                    sessions[index] = updatedSession
+                }
+                prefs[KEY_SESSIONS] = json.encodeToString(sessions.map { it.toSerializable() })
+                prefs[KEY_CURRENT_SESSION_ID] = updatedSession.id
+            }
+            
+            // Update TokenStorage
+            tokenStorage.saveAccessToken(tokens.accessToken)
+            tokens.refreshToken?.let { tokenStorage.saveRefreshToken(it) }
+            tokenStorage.saveTokenExpiry(tokens.expiresAtMillis)
+            
+            return updatedSession
+        }
+        
+        // No existing session found, create new one
         val session = Session(
             id = UUID.randomUUID().toString(),
             provider = provider,
@@ -85,6 +115,23 @@ class SessionManager @Inject constructor(
         tokenStorage.saveTokenExpiry(tokens.expiresAtMillis)
 
         return session
+    }
+    
+    /**
+     * Find existing session for the same user identity.
+     * Matches by email (primary) or userId, with same provider.
+     */
+    private suspend fun findExistingSession(provider: AuthProvider, tokens: AuthTokens): Session? {
+        val sessions = getAllSessions()
+        val email = tokens.userInfo?.email
+        val userId = tokens.userId
+        
+        return sessions.find { session ->
+            session.provider == provider && (
+                (email != null && session.email == email) ||
+                (userId != null && session.tokens.userId == userId)
+            )
+        }
     }
 
     suspend fun updateSession(session: Session) {

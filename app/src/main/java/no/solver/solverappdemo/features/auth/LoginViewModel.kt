@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
+import no.solver.solverappdemo.core.config.DebugConfigurationManager
 import no.solver.solverappdemo.features.auth.models.Session
 import no.solver.solverappdemo.features.auth.services.AuthCancelledException
 import no.solver.solverappdemo.features.auth.services.MicrosoftAuthService
@@ -39,7 +40,8 @@ class LoginViewModel @Inject constructor(
     private val vippsAuthService: VippsAuthService,
     private val sessionManager: SessionManager,
     private val offlineFirstRepository: OfflineFirstObjectsRepository,
-    private val iconRepository: IconRepository
+    private val iconRepository: IconRepository,
+    private val debugConfigurationManager: DebugConfigurationManager
 ) : ViewModel() {
 
     companion object {
@@ -70,6 +72,21 @@ class LoginViewModel @Inject constructor(
             started = SharingStarted.Eagerly,
             initialValue = AuthEnvironment.SOLVER
         )
+
+    val isDebugModeEnabled: StateFlow<Boolean> = debugConfigurationManager.isDebugModeEnabledFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    fun toggleDebugMode() {
+        viewModelScope.launch {
+            val current = debugConfigurationManager.isDebugModeEnabled()
+            debugConfigurationManager.setDebugModeEnabled(!current)
+            Log.d(TAG, "Debug mode toggled: ${!current}")
+        }
+    }
 
     fun signInWithMicrosoft(activity: Activity) {
         viewModelScope.launch {

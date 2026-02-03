@@ -46,6 +46,7 @@ fun SmartLockCard(
     capabilities: SmartLockCapabilities,
     operation: CachedOperation,
     debugResult: String?,
+    isDebugModeEnabled: Boolean,
     onUnlock: () -> Unit,
     onLock: () -> Unit,
     onCheckStatus: () -> Unit,
@@ -280,8 +281,8 @@ fun SmartLockCard(
                 }
             }
 
-            // Debug result section (tap 3x to reveal hidden buttons)
-            if (debugResult != null) {
+            // Debug result section (only visible if debug mode enabled)
+            if (isDebugModeEnabled && debugResult != null) {
                 HorizontalDivider()
                 Text(
                     text = debugResult,
@@ -299,8 +300,8 @@ fun SmartLockCard(
                 )
             }
 
-            // Hidden debug buttons (Get Keys / Clear Keys)
-            if (showDebugButtons) {
+            // Hidden debug buttons (Get Keys / Clear Keys) - only visible if debug mode enabled
+            if (isDebugModeEnabled && showDebugButtons) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -375,6 +376,7 @@ private fun SmartLockCardDanalockPreview() {
             capabilities = SmartLockCapabilities.DANALOCK,
             operation = CachedOperation.NONE,
             debugResult = "✅ Keys cached successfully\nDevice: e5:c8:3a:89:b6:f9\nValid for 1439 minutes",
+            isDebugModeEnabled = true,
             onUnlock = {},
             onLock = {},
             onCheckStatus = {},
@@ -401,6 +403,7 @@ private fun SmartLockCardMasterlockPreview() {
             capabilities = SmartLockCapabilities.MASTERLOCK,
             operation = CachedOperation.NONE,
             debugResult = null,
+            isDebugModeEnabled = false,
             onUnlock = {},
             onLock = {},
             onCheckStatus = {},
@@ -421,6 +424,7 @@ private fun SmartLockCardNoTokensPreview() {
             capabilities = SmartLockCapabilities.DANALOCK,
             operation = CachedOperation.NONE,
             debugResult = null,
+            isDebugModeEnabled = false,
             onUnlock = {},
             onLock = {},
             onCheckStatus = {},

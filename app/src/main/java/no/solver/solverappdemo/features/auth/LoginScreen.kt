@@ -29,7 +29,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,6 +46,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.hilt.navigation.compose.hiltViewModel
 import no.solver.solverappdemo.R
 import no.solver.solverappdemo.core.config.AuthProvider
@@ -59,10 +66,16 @@ fun LoginScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
+    val isDebugModeEnabled by viewModel.isDebugModeEnabled.collectAsState()
     
     val context = LocalContext.current
     val activity = context as? Activity
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    
+    var debugTapCount by remember { mutableIntStateOf(0) }
+    var lastTapTime by remember { mutableLongStateOf(0L) }
+    val debugTapTimeout = 2000L
     
     // AppAuth activity result launcher for Vipps OAuth
     val vippsAuthLauncher = rememberLauncherForActivityResult(
@@ -114,11 +127,34 @@ fun LoginScreen(
         ) {
             Spacer(modifier = Modifier.weight(1f))
 
-            // Solver Logo
+            // Solver Logo with 7-tap gesture for debug mode
             Image(
                 painter = painterResource(id = R.drawable.solver_logo),
                 contentDescription = "Solver Logo",
-                modifier = Modifier.size(120.dp)
+                modifier = Modifier
+                    .size(120.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - lastTapTime > debugTapTimeout) {
+                                debugTapCount = 0
+                            }
+                            lastTapTime = currentTime
+                            debugTapCount++
+                            
+                            if (debugTapCount >= 7) {
+                                debugTapCount = 0
+                                val newState = !isDebugModeEnabled
+                                viewModel.toggleDebugMode()
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        message = if (newState) "Debug mode enabled" else "Debug mode disabled",
+                                        duration = SnackbarDuration.Short
+                                    )
+                                }
+                            }
+                        }
+                    }
             )
 
             Spacer(modifier = Modifier.height(20.dp))

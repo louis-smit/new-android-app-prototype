@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,10 +36,14 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,8 +55,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.launch
 import no.solver.solverappdemo.R
 import no.solver.solverappdemo.data.models.SolverObject
+import no.solver.solverappdemo.features.objects.filter.LabelFiltersSheet
 import no.solver.solverappdemo.ui.components.OfflineBanner
 import no.solver.solverappdemo.ui.theme.SolverAppTheme
 
@@ -69,6 +78,24 @@ fun ObjectsScreen(
     val selectedTab by viewModel.selectedTab.collectAsState()
     val isFavouritesLoading by viewModel.isFavouritesLoading.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val labelFilters by viewModel.labelFilters.collectAsState()
+    val activeFilterCount by viewModel.activeFilterCount.collectAsState()
+
+    var showLabelFilters by remember { mutableStateOf(false) }
+    val filterSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+
+    if (showLabelFilters) {
+        LabelFiltersSheet(
+            filters = labelFilters,
+            onFilterChange = { filterId, optionValue, isChecked ->
+                viewModel.updateLabelFilter(filterId, optionValue, isChecked)
+            },
+            onClearFilters = { viewModel.clearLabelFilters() },
+            onDismiss = { showLabelFilters = false },
+            sheetState = filterSheetState
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -111,7 +138,7 @@ fun ObjectsScreen(
                 }
             }
 
-            // Search field
+            // Search field with filter button
             val interactionSource = remember { MutableInteractionSource() }
             val colors = TextFieldDefaults.colors(
                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -119,54 +146,84 @@ fun ObjectsScreen(
                 unfocusedIndicatorColor = Color.Transparent,
                 focusedIndicatorColor = Color.Transparent
             )
-            BasicTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.setSearchQuery(it) },
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                interactionSource = interactionSource,
-                decorationBox = { innerTextField ->
-                    DecorationBox(
-                        value = searchQuery,
-                        innerTextField = innerTextField,
-                        enabled = true,
-                        singleLine = true,
-                        visualTransformation = VisualTransformation.None,
-                        interactionSource = interactionSource,
-                        placeholder = {
-                            Text(
-                                "Search objects...",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Clear search"
-                                    )
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = { viewModel.setSearchQuery(it) },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    interactionSource = interactionSource,
+                    decorationBox = { innerTextField ->
+                        DecorationBox(
+                            value = searchQuery,
+                            innerTextField = innerTextField,
+                            enabled = true,
+                            singleLine = true,
+                            visualTransformation = VisualTransformation.None,
+                            interactionSource = interactionSource,
+                            placeholder = {
+                                Text(
+                                    "Search objects...",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { viewModel.setSearchQuery("") }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Clear search"
+                                        )
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(28.dp),
+                            colors = colors,
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                        )
+                    }
+                )
+
+                if (labelFilters.isNotEmpty()) {
+                    IconButton(
+                        onClick = { showLabelFilters = true }
+                    ) {
+                        BadgedBox(
+                            badge = {
+                                if (activeFilterCount > 0) {
+                                    Badge {
+                                        Text(activeFilterCount.toString())
+                                    }
                                 }
                             }
-                        },
-                        shape = RoundedCornerShape(28.dp),
-                        colors = colors,
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
-                    )
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_filter_list),
+                                contentDescription = "Filter",
+                                tint = if (activeFilterCount > 0)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
-            )
+            }
 
             PullToRefreshBox(
                 isRefreshing = isRefreshing || (selectedTab == 1 && isFavouritesLoading),
@@ -299,7 +356,7 @@ private fun EmptyContent(
                 style = MaterialTheme.typography.titleLarge
             )
             Text(
-                text = "You don't have access to any objects yet.",
+                text = "You don't have access to any objects that match the search criteria.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

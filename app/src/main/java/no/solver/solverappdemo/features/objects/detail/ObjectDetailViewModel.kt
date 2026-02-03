@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.config.APIConfiguration
+import no.solver.solverappdemo.core.config.DebugConfigurationManager
 import no.solver.solverappdemo.core.network.ApiResult
 import no.solver.solverappdemo.core.storage.FavouritesStore
 import no.solver.solverappdemo.data.models.Command
@@ -61,6 +62,7 @@ class ObjectDetailViewModel @Inject constructor(
     private val danalockMiddleware: DanalockMiddleware,
     private val masterlockMiddleware: MasterlockMiddleware,
     private val smartLockManager: SmartLockManager,
+    private val debugConfigurationManager: DebugConfigurationManager,
     val paymentMiddleware: PaymentMiddleware,
     val subscriptionMiddleware: SubscriptionMiddleware,
     val geofenceMiddleware: GeofenceMiddleware
@@ -88,6 +90,9 @@ class ObjectDetailViewModel @Inject constructor(
 
     private val _showExecuteResponse = MutableStateFlow(false)
     val showExecuteResponse: StateFlow<Boolean> = _showExecuteResponse.asStateFlow()
+
+    val isDebugModeEnabled: StateFlow<Boolean> = debugConfigurationManager.isDebugModeEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     private val _middlewareMessage = MutableStateFlow<String?>(null)
     val middlewareMessage: StateFlow<String?> = _middlewareMessage.asStateFlow()

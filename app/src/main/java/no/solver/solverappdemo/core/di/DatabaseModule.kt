@@ -25,7 +25,9 @@ object DatabaseModule {
             context,
             SolverDatabase::class.java,
             SolverDatabase.DATABASE_NAME
-        ).build()
+        )
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     @Provides

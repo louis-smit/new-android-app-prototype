@@ -57,11 +57,12 @@ enum class MoreItem(
     MASTERLOCK_DEMO("Masterlock Demo", Icons.Default.Lock);
 
     companion object {
-        val productionItems = listOf(PAYMENTS, VISIT, LOGS)
-        val debugItems = listOf(DEBUG, DANALOCK_DEMO, MASTERLOCK_DEMO)
+        val productionItems = listOf(PAYMENTS, LOGS)
+        val debugItems = listOf(VISIT, DEBUG, DANALOCK_DEMO, MASTERLOCK_DEMO)
 
-        val visibleItems: List<MoreItem>
-            get() = if (BuildConfig.DEBUG) entries.toList() else productionItems
+        fun visibleItems(isDebugModeEnabled: Boolean): List<MoreItem> {
+            return if (isDebugModeEnabled) entries.toList() else productionItems
+        }
     }
 }
 
@@ -73,6 +74,7 @@ fun MoreScreen(
 ) {
     val currentSession by viewModel.currentSession.collectAsState()
     val isSigningOut by viewModel.isSigningOut.collectAsState()
+    val isDebugModeEnabled by viewModel.isDebugModeEnabled.collectAsState()
     var showSignOutConfirmation by remember { mutableStateOf(false) }
 
     if (showSignOutConfirmation) {
@@ -109,7 +111,7 @@ fun MoreScreen(
         }
 
         // Navigation Items
-        items(MoreItem.visibleItems) { item ->
+        items(MoreItem.visibleItems(isDebugModeEnabled)) { item ->
             MoreItemRow(
                 item = item,
                 onClick = { onNavigateToItem(item) }

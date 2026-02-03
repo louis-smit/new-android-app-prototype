@@ -18,7 +18,8 @@ data class SolverObject(
     val userAccess: Boolean? = null,
     val hasSubscription: Boolean? = null,
     val information: ObjectInformation? = null,
-    val vippsCredentials: VippsCredentials? = null
+    val vippsCredentials: VippsCredentials? = null,
+    val labels: List<KeyValuePair>? = null
 ) {
     val isAvailable: Boolean
         get() = active && online
@@ -92,7 +93,8 @@ data class SolverObjectDTO(
     val userAccess: Boolean? = null,
     val hasSubscription: Boolean? = null,
     val information: ObjectInformation? = null,
-    val vippsCredentials: VippsCredentials? = null
+    val vippsCredentials: VippsCredentials? = null,
+    val labels: List<KeyValuePair>? = null
 ) {
     fun toDomainModel(): SolverObject {
         val isOnline = state?.let { it == 1 } ?: (online ?: true)
@@ -112,7 +114,8 @@ data class SolverObjectDTO(
             userAccess = userAccess,
             hasSubscription = hasSubscription,
             information = information,
-            vippsCredentials = vippsCredentials
+            vippsCredentials = vippsCredentials,
+            labels = labels
         )
     }
 }
@@ -135,5 +138,11 @@ data class ObjectInformation(
 @Serializable
 data class ObjectAttribute(
     val label: String? = null,
+    val value: String? = null
+)
+
+@Serializable
+data class KeyValuePair(
+    val key: String? = null,
     val value: String? = null
 )

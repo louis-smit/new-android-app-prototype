@@ -24,6 +24,10 @@ import no.solver.solverappdemo.data.models.SolverObject
 import no.solver.solverappdemo.data.repositories.ObjectsLoadResult
 import no.solver.solverappdemo.data.repositories.OfflineFirstObjectsRepository
 import no.solver.solverappdemo.features.auth.services.SessionManager
+import no.solver.solverappdemo.features.objects.filter.LabelFilter
+import no.solver.solverappdemo.features.objects.filter.buildLabelFilters
+import no.solver.solverappdemo.features.objects.filter.countActiveFilters
+import no.solver.solverappdemo.features.objects.filter.filterObjectsByLabels
 import javax.inject.Inject
 
 sealed class ObjectsUiState {
@@ -106,6 +110,17 @@ class ObjectsViewModel @Inject constructor(
     private val _isFavouritesLoading = MutableStateFlow(false)
     val isFavouritesLoading: StateFlow<Boolean> = _isFavouritesLoading.asStateFlow()
 
+    private val _labelFilters = MutableStateFlow<List<LabelFilter>>(emptyList())
+    val labelFilters: StateFlow<List<LabelFilter>> = _labelFilters.asStateFlow()
+
+    val activeFilterCount: StateFlow<Int> = _labelFilters
+        .map { countActiveFilters(it) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0
+        )
+
     val filteredFavourites: StateFlow<List<SolverObject>> = combine(
         favouritesStore.favourites,
         _searchQuery.debounce(SEARCH_DEBOUNCE_MS)
@@ -119,9 +134,11 @@ class ObjectsViewModel @Inject constructor(
 
     val filteredObjects: StateFlow<List<SolverObject>> = combine(
         _allObjects,
-        _searchQuery.debounce(SEARCH_DEBOUNCE_MS)
-    ) { objects, query ->
-        filterAndSortObjects(objects, query)
+        _searchQuery.debounce(SEARCH_DEBOUNCE_MS),
+        _labelFilters
+    ) { objects, query, filters ->
+        val labelFiltered = filterObjectsByLabels(objects, filters)
+        filterAndSortObjects(labelFiltered, query)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -225,6 +242,8 @@ class ObjectsViewModel @Inject constructor(
                         isFromCache = false,
                         lastSyncedAt = result.lastSyncedAt
                     )
+                    // Rebuild label filters with fresh data
+                    _labelFilters.value = buildLabelFilters(result.objects, _labelFilters.value)
                     Log.d(TAG, "Background refresh completed: ${result.objects.size} objects")
                 }
                 is ObjectsLoadResult.Error -> {
@@ -238,6 +257,8 @@ class ObjectsViewModel @Inject constructor(
         val objects = result.objects
         _allObjects.value = objects
         _lastSyncedAt.value = result.lastSyncedAt
+
+        _labelFilters.value = buildLabelFilters(objects, _labelFilters.value)
 
         _uiState.value = if (objects.isEmpty()) {
             if (!connectivityObserver.isConnected()) {
@@ -282,6 +303,32 @@ class ObjectsViewModel @Inject constructor(
 
     fun retry() {
         loadObjects()
+    }
+
+    fun updateLabelFilter(filterId: String, optionValue: String, isChecked: Boolean) {
+        _labelFilters.value = _labelFilters.value.map { filter ->
+            if (filter.id == filterId) {
+                filter.copy(
+                    options = filter.options.map { option ->
+                        if (option.value == optionValue) {
+                            option.copy(isChecked = isChecked)
+                        } else {
+                            option
+                        }
+                    }
+                )
+            } else {
+                filter
+            }
+        }
+    }
+
+    fun clearLabelFilters() {
+        _labelFilters.value = _labelFilters.value.map { filter ->
+            filter.copy(
+                options = filter.options.map { it.copy(isChecked = false) }
+            )
+        }
     }
 
     private fun filterAndSortObjects(

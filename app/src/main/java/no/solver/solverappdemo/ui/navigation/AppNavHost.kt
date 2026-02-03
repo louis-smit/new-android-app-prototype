@@ -18,11 +18,15 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -503,6 +507,100 @@ fun AppNavHost(
                     onDismiss = { deepLinkViewModel.subscriptionMiddleware.dismissSubscriptionOptionsSheet() }
                 )
             }
+        }
+
+        // Payment Success Alert (for deep link flows)
+        val showPaymentSuccess by deepLinkViewModel.paymentMiddleware.showSuccessAlert.collectAsState()
+
+        if (showPaymentSuccess) {
+            AlertDialog(
+                onDismissRequest = { deepLinkViewModel.paymentMiddleware.dismissSuccessAlert() },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                title = { Text("Payment Successful") },
+                text = { Text("Your payment was successful") },
+                confirmButton = {
+                    TextButton(onClick = { deepLinkViewModel.paymentMiddleware.dismissSuccessAlert() }) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
+        // Payment Error Alert (for deep link flows)
+        val showPaymentError by deepLinkViewModel.paymentMiddleware.showErrorAlert.collectAsState()
+        val paymentErrorMessage by deepLinkViewModel.paymentMiddleware.errorMessage.collectAsState()
+
+        if (showPaymentError) {
+            AlertDialog(
+                onDismissRequest = { deepLinkViewModel.paymentMiddleware.dismissErrorAlert() },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                },
+                title = { Text("Payment Failed") },
+                text = { Text(paymentErrorMessage ?: "Payment was unsuccessful") },
+                confirmButton = {
+                    TextButton(onClick = { deepLinkViewModel.paymentMiddleware.dismissErrorAlert() }) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
+        // Subscription Success Alert (for deep link flows)
+        val showSubscriptionSuccess by deepLinkViewModel.subscriptionMiddleware.showSuccessAlert.collectAsState()
+
+        if (showSubscriptionSuccess) {
+            AlertDialog(
+                onDismissRequest = { deepLinkViewModel.subscriptionMiddleware.dismissSuccessAlert() },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                title = { Text("Subscription Successful") },
+                text = { Text("Your subscription payment was successful") },
+                confirmButton = {
+                    TextButton(onClick = { deepLinkViewModel.subscriptionMiddleware.dismissSuccessAlert() }) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
+        // Subscription Error Alert (for deep link flows)
+        val showSubscriptionError by deepLinkViewModel.subscriptionMiddleware.showErrorAlert.collectAsState()
+        val subscriptionErrorMessage by deepLinkViewModel.subscriptionMiddleware.errorMessage.collectAsState()
+
+        if (showSubscriptionError) {
+            AlertDialog(
+                onDismissRequest = { deepLinkViewModel.subscriptionMiddleware.dismissErrorAlert() },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                },
+                title = { Text("Subscription Failed") },
+                text = { Text(subscriptionErrorMessage ?: "Subscription payment was unsuccessful") },
+                confirmButton = {
+                    TextButton(onClick = { deepLinkViewModel.subscriptionMiddleware.dismissErrorAlert() }) {
+                        Text("OK")
+                    }
+                }
+            )
         }
         
         // Snackbar host for errors

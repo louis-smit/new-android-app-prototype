@@ -8,7 +8,7 @@ import androidx.room.RoomDatabase
         CachedObjectEntity::class,
         CacheMetadataEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class SolverDatabase : RoomDatabase() {
