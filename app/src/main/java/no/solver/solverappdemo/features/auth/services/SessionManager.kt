@@ -12,6 +12,7 @@ import kotlinx.serialization.json.Json
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
 import no.solver.solverappdemo.core.storage.TokenStorage
+import no.solver.solverappdemo.data.cache.ObjectsCacheRepository
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.Session
 import java.util.UUID
@@ -22,7 +23,8 @@ import javax.inject.Singleton
 class SessionManager @Inject constructor(
     private val dataStore: DataStore<Preferences>,
     private val json: Json,
-    private val tokenStorage: TokenStorage
+    private val tokenStorage: TokenStorage,
+    private val objectsCacheRepository: dagger.Lazy<ObjectsCacheRepository>
 ) {
     companion object {
         private val KEY_CURRENT_SESSION_ID = stringPreferencesKey("current_session_id")
@@ -172,8 +174,14 @@ class SessionManager @Inject constructor(
     }
 
     suspend fun switchToSession(sessionId: String) {
+        val previousSessionId = getCurrentSession()?.id
         val sessions = getAllSessions()
         val targetSession = sessions.find { it.id == sessionId }
+        
+        // Clear cache for the previous account before switching
+        if (previousSessionId != null && previousSessionId != sessionId) {
+            objectsCacheRepository.get().clearCacheForAccount(previousSessionId)
+        }
         
         dataStore.edit { prefs ->
             prefs[KEY_CURRENT_SESSION_ID] = sessionId

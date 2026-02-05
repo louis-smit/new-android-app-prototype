@@ -7,14 +7,18 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -42,6 +46,8 @@ class DebugConfigurationManager @Inject constructor(
         private val KEY_MIDDLEWARE_DEBUG_UI = booleanPreferencesKey("debug_middleware_ui")
         private val KEY_API_MODE = stringPreferencesKey("debug_api_mode")
         private val KEY_API_ENVIRONMENT = stringPreferencesKey("debug_api_environment")
+        private val KEY_DATASET_MULTIPLIER = intPreferencesKey("debug_dataset_multiplier")
+        private val KEY_SIMULATING_LARGE_DATASET = booleanPreferencesKey("debug_simulating_large_dataset")
     }
 
     // Debug Mode
@@ -73,6 +79,20 @@ class DebugConfigurationManager @Inject constructor(
             APIEnvironment.SOLVER
         }
     }
+
+    // Dataset Multiplier for simulation (default 5)
+    val datasetMultiplierFlow: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[KEY_DATASET_MULTIPLIER] ?: 5
+    }
+
+    // Is simulating large dataset
+    val isSimulatingLargeDatasetFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_SIMULATING_LARGE_DATASET] ?: false
+    }
+
+    // Simulation events for ObjectsViewModel to observe
+    private val _simulationEvents = MutableSharedFlow<DataSimulationEvent>()
+    val simulationEvents: SharedFlow<DataSimulationEvent> = _simulationEvents.asSharedFlow()
 
     // Current API base URL
     fun getCurrentAPIBaseURL(provider: AuthProvider = AuthProvider.MICROSOFT): Flow<String> {
@@ -148,6 +168,36 @@ class DebugConfigurationManager @Inject constructor(
         dataStore.edit { prefs ->
             prefs[KEY_MIDDLEWARE_DEBUG_UI] = enabled
         }
+    }
+
+    suspend fun getDatasetMultiplier(): Int {
+        return datasetMultiplierFlow.first()
+    }
+
+    suspend fun setDatasetMultiplier(multiplier: Int) {
+        dataStore.edit { prefs ->
+            prefs[KEY_DATASET_MULTIPLIER] = multiplier
+        }
+    }
+
+    suspend fun isSimulatingLargeDataset(): Boolean {
+        return isSimulatingLargeDatasetFlow.first()
+    }
+
+    suspend fun setSimulatingLargeDataset(simulating: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_SIMULATING_LARGE_DATASET] = simulating
+        }
+    }
+
+    suspend fun emitSimulateEvent(multiplier: Int) {
+        setSimulatingLargeDataset(true)
+        _simulationEvents.emit(DataSimulationEvent.SimulateLargeDataset(multiplier))
+    }
+
+    suspend fun emitResetEvent() {
+        setSimulatingLargeDataset(false)
+        _simulationEvents.emit(DataSimulationEvent.ResetSimulation)
     }
 
     /**
@@ -236,4 +286,12 @@ enum class APIEnvironment {
         SOLVER -> AuthEnvironment.SOLVER
         ZOHM -> AuthEnvironment.ZOHM
     }
+}
+
+/**
+ * Events for data simulation (large dataset testing)
+ */
+sealed class DataSimulationEvent {
+    data class SimulateLargeDataset(val multiplier: Int) : DataSimulationEvent()
+    object ResetSimulation : DataSimulationEvent()
 }

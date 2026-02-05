@@ -15,6 +15,7 @@ import no.solver.solverappdemo.core.config.APIEnvironment
 import no.solver.solverappdemo.core.config.APIMode
 import no.solver.solverappdemo.core.config.AppEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
+import no.solver.solverappdemo.core.config.DataSimulationEvent
 import no.solver.solverappdemo.core.config.DebugConfigurationManager
 import no.solver.solverappdemo.features.auth.models.Session
 import no.solver.solverappdemo.features.auth.services.SessionManager
@@ -33,7 +34,10 @@ data class DebugUiState(
     val packageName: String = BuildConfig.APPLICATION_ID,
     val buildType: String = if (BuildConfig.DEBUG) "Debug" else "Release",
     val buildEnvironment: String = AppEnvironment.current.name,
-    val showClearCacheDialog: Boolean = false
+    val showClearCacheDialog: Boolean = false,
+    val datasetMultiplier: Int = 5,
+    val isSimulatingLargeDataset: Boolean = false,
+    val simulatedObjectCount: Int = 0
 )
 
 @HiltViewModel
@@ -46,6 +50,8 @@ class DebugViewModel @Inject constructor(
     val showClearCacheDialog: StateFlow<Boolean> = _showClearCacheDialog.asStateFlow()
 
     private val _cacheSize = MutableStateFlow(0L)
+    
+    private val _simulatedObjectCount = MutableStateFlow(0)
 
     val uiState: StateFlow<DebugUiState> = combine(
         debugConfigManager.isDebugModeEnabledFlow,
@@ -55,7 +61,10 @@ class DebugViewModel @Inject constructor(
         debugConfigManager.getCurrentAPIBaseURL(AuthProvider.MICROSOFT),
         sessionManager.currentSessionFlow,
         _cacheSize,
-        _showClearCacheDialog
+        _showClearCacheDialog,
+        debugConfigManager.datasetMultiplierFlow,
+        debugConfigManager.isSimulatingLargeDatasetFlow,
+        _simulatedObjectCount
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         DebugUiState(
@@ -66,7 +75,10 @@ class DebugViewModel @Inject constructor(
             currentAPIBaseURL = values[4] as String,
             currentSession = values[5] as Session?,
             cacheSize = values[6] as Long,
-            showClearCacheDialog = values[7] as Boolean
+            showClearCacheDialog = values[7] as Boolean,
+            datasetMultiplier = values[8] as Int,
+            isSimulatingLargeDataset = values[9] as Boolean,
+            simulatedObjectCount = values[10] as Int
         )
     }.stateIn(
         scope = viewModelScope,
@@ -118,5 +130,29 @@ class DebugViewModel @Inject constructor(
 
     fun updateCacheSize() {
         _cacheSize.value = debugConfigManager.getCacheSizeKB()
+    }
+
+    fun setDatasetMultiplier(multiplier: Int) {
+        viewModelScope.launch {
+            debugConfigManager.setDatasetMultiplier(multiplier)
+        }
+    }
+
+    fun simulateLargeDataset() {
+        viewModelScope.launch {
+            val multiplier = debugConfigManager.getDatasetMultiplier()
+            debugConfigManager.emitSimulateEvent(multiplier)
+        }
+    }
+
+    fun resetSimulation() {
+        viewModelScope.launch {
+            _simulatedObjectCount.value = 0
+            debugConfigManager.emitResetEvent()
+        }
+    }
+
+    fun updateSimulatedObjectCount(count: Int) {
+        _simulatedObjectCount.value = count
     }
 }

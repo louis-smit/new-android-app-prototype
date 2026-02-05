@@ -20,12 +20,17 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -35,6 +40,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -123,6 +131,16 @@ fun DebugScreen(
             )
         }
 
+        // Data Simulation Section
+        DataSimulationSection(
+            datasetMultiplier = uiState.datasetMultiplier,
+            isSimulating = uiState.isSimulatingLargeDataset,
+            simulatedObjectCount = uiState.simulatedObjectCount,
+            onMultiplierChange = { viewModel.setDatasetMultiplier(it) },
+            onSimulate = { viewModel.simulateLargeDataset() },
+            onReset = { viewModel.resetSimulation() }
+        )
+
         // API Section
         DebugSection(
             title = "API",
@@ -176,12 +194,12 @@ fun DebugScreen(
                     DebugDivider()
                 }
 
-                DebugInfoRow(
-                    label = "User ID",
-                    value = session.tokens.userId ?: session.id.take(8)
-                )
-
-                DebugDivider()
+                // TODO: Revisit - userId fallback to session.id.take(8) may not match iOS behavior
+                // DebugInfoRow(
+                //     label = "User ID",
+                //     value = session.tokens.userId ?: session.id.take(8)
+                // )
+                // DebugDivider()
 
                 DebugInfoRow(
                     label = "Token Expires",
@@ -387,6 +405,104 @@ private fun DebugDivider() {
         color = MaterialTheme.colorScheme.outlineVariant,
         thickness = 0.5.dp
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DataSimulationSection(
+    datasetMultiplier: Int,
+    isSimulating: Boolean,
+    simulatedObjectCount: Int,
+    onMultiplierChange: (Int) -> Unit,
+    onSimulate: () -> Unit,
+    onReset: () -> Unit
+) {
+    val multiplierOptions = listOf(2, 5, 10, 20, 50)
+    var expanded by remember { mutableStateOf(false) }
+
+    DebugSection(title = "DATA SIMULATION") {
+        // Multiplier Dropdown
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Dataset Multiplier",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it }
+            ) {
+                OutlinedTextField(
+                    value = "${datasetMultiplier}x",
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                        .width(100.dp),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    singleLine = true
+                )
+
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    multiplierOptions.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text("${option}x") },
+                            onClick = {
+                                onMultiplierChange(option)
+                                expanded = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        DebugDivider()
+
+        // Current Status
+        if (isSimulating) {
+            DebugInfoRow(
+                label = "Simulated Objects",
+                value = "$simulatedObjectCount"
+            )
+            DebugDivider()
+        }
+
+        // Buttons
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = onSimulate,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isSimulating
+            ) {
+                Text("Simulate Large Dataset")
+            }
+
+            OutlinedButton(
+                onClick = onReset,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = isSimulating
+            ) {
+                Text("Reset to Real Data")
+            }
+        }
+    }
 }
 
 @Composable

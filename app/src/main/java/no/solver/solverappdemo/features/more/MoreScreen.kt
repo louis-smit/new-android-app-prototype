@@ -73,18 +73,36 @@ fun MoreScreen(
     viewModel: MoreViewModel = hiltViewModel()
 ) {
     val currentSession by viewModel.currentSession.collectAsState()
+    val allSessions by viewModel.allSessions.collectAsState()
     val isSigningOut by viewModel.isSigningOut.collectAsState()
     val isDebugModeEnabled by viewModel.isDebugModeEnabled.collectAsState()
     var showSignOutConfirmation by remember { mutableStateOf(false) }
+    var showSignOutAllConfirmation by remember { mutableStateOf(false) }
 
     if (showSignOutConfirmation) {
-        SignOutConfirmationDialog(
+        SimpleSignOutConfirmationDialog(
             onConfirm = {
                 showSignOutConfirmation = false
-                viewModel.signOut()
+                viewModel.signOutCurrentAccount()
                 onSignOut()
             },
             onDismiss = { showSignOutConfirmation = false }
+        )
+    }
+
+    if (showSignOutAllConfirmation) {
+        SignOutConfirmationDialog(
+            onSignOutCurrent = {
+                showSignOutAllConfirmation = false
+                viewModel.signOutCurrentAccount()
+                onSignOut()
+            },
+            onSignOutAll = {
+                showSignOutAllConfirmation = false
+                viewModel.signOutAllAccounts()
+                onSignOut()
+            },
+            onDismiss = { showSignOutAllConfirmation = false }
         )
     }
 
@@ -124,7 +142,13 @@ fun MoreScreen(
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 SignOutButton(
                     isSigningOut = isSigningOut,
-                    onClick = { showSignOutConfirmation = true }
+                    onClick = {
+                        if (allSessions.size > 1) {
+                            showSignOutAllConfirmation = true
+                        } else {
+                            showSignOutConfirmation = true
+                        }
+                    }
                 )
             }
         }
@@ -227,14 +251,14 @@ private fun SignOutButton(
 }
 
 @Composable
-private fun SignOutConfirmationDialog(
+private fun SimpleSignOutConfirmationDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Sign Out") },
-        text = { Text("Are you sure you want to sign out of this account?") },
+        text = { Text("Are you sure you want to sign out?") },
         confirmButton = {
             TextButton(onClick = onConfirm) {
                 Text(
@@ -246,6 +270,40 @@ private fun SignOutConfirmationDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun SignOutConfirmationDialog(
+    onSignOutCurrent: () -> Unit,
+    onSignOutAll: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sign Out") },
+        text = { Text("Which accounts would you like to sign out of?") },
+        confirmButton = {
+            TextButton(onClick = onSignOutAll) {
+                Text(
+                    text = "All Accounts",
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+                TextButton(onClick = onSignOutCurrent) {
+                    Text(
+                        text = "Current Account",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
     )

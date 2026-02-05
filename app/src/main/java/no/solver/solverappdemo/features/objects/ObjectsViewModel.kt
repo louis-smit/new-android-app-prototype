@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.cache.IconCacheManager
 import no.solver.solverappdemo.core.config.APIConfiguration
+import no.solver.solverappdemo.core.config.DataSimulationEvent
+import no.solver.solverappdemo.core.config.DebugConfigurationManager
 import no.solver.solverappdemo.core.network.ConnectivityObserver
 import no.solver.solverappdemo.core.network.NetworkStatus
 import no.solver.solverappdemo.core.storage.FavouritesStore
@@ -49,7 +51,8 @@ class ObjectsViewModel @Inject constructor(
     private val sessionManager: SessionManager,
     private val connectivityObserver: ConnectivityObserver,
     private val favouritesStore: FavouritesStore,
-    private val iconCacheManager: IconCacheManager
+    private val iconCacheManager: IconCacheManager,
+    private val debugConfigManager: DebugConfigurationManager
 ) : ViewModel() {
 
     companion object {
@@ -98,6 +101,10 @@ class ObjectsViewModel @Inject constructor(
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     private val _allObjects = MutableStateFlow<List<SolverObject>>(emptyList())
+    
+    // Store real objects for simulation reset
+    private var _realObjects: List<SolverObject> = emptyList()
+    private var _isSimulating = false
 
     private val _lastSyncedAt = MutableStateFlow<Long?>(null)
     val lastSyncedAt: StateFlow<Long?> = _lastSyncedAt.asStateFlow()
@@ -150,6 +157,7 @@ class ObjectsViewModel @Inject constructor(
         loadFavourites()
         observeConnectivityChanges()
         observeAccountChanges()
+        observeDataSimulation()
     }
 
     private fun observeAccountChanges() {
@@ -160,6 +168,9 @@ class ObjectsViewModel @Inject constructor(
                 // Only reload if session actually changed (not on initial load)
                 if (previousSessionId != null && currentSessionId != previousSessionId) {
                     Log.d(TAG, "Account switched, reloading objects")
+                    // Reset simulation state
+                    _isSimulating = false
+                    _realObjects = emptyList()
                     // Reset state and reload for the new account
                     _allObjects.value = emptyList()
                     loadObjects()
@@ -168,6 +179,76 @@ class ObjectsViewModel @Inject constructor(
                 previousSessionId = currentSessionId
             }
         }
+    }
+
+    private fun observeDataSimulation() {
+        viewModelScope.launch {
+            debugConfigManager.simulationEvents.collect { event ->
+                when (event) {
+                    is DataSimulationEvent.SimulateLargeDataset -> {
+                        simulateLargeDataset(event.multiplier)
+                    }
+                    is DataSimulationEvent.ResetSimulation -> {
+                        resetToRealData()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun simulateLargeDataset(multiplier: Int) {
+        Log.d(TAG, "Simulating large dataset with multiplier: $multiplier")
+        
+        // Store real objects if not already stored
+        if (!_isSimulating) {
+            _realObjects = _allObjects.value
+        }
+        _isSimulating = true
+        
+        // Duplicate objects
+        val baseObjects = _realObjects.ifEmpty { _allObjects.value }
+        val simulatedObjects = mutableListOf<SolverObject>()
+        
+        repeat(multiplier) { copyIndex ->
+            baseObjects.forEach { obj ->
+                val simulatedObj = obj.copy(
+                    id = obj.id + (copyIndex + 1) * 1_000_000,
+                    name = if (copyIndex == 0) obj.name else "${obj.name} (Copy ${copyIndex + 1})"
+                )
+                simulatedObjects.add(simulatedObj)
+            }
+        }
+        
+        _allObjects.value = simulatedObjects
+        _labelFilters.value = buildLabelFilters(simulatedObjects, _labelFilters.value)
+        
+        _uiState.value = ObjectsUiState.Success(
+            objects = simulatedObjects,
+            isFromCache = false,
+            lastSyncedAt = _lastSyncedAt.value
+        )
+        
+        Log.d(TAG, "Simulated ${simulatedObjects.size} objects (${baseObjects.size} x $multiplier)")
+    }
+
+    private fun resetToRealData() {
+        Log.d(TAG, "Resetting to real data")
+        
+        if (_isSimulating && _realObjects.isNotEmpty()) {
+            _allObjects.value = _realObjects
+            _labelFilters.value = buildLabelFilters(_realObjects, _labelFilters.value)
+            
+            _uiState.value = ObjectsUiState.Success(
+                objects = _realObjects,
+                isFromCache = false,
+                lastSyncedAt = _lastSyncedAt.value
+            )
+            
+            Log.d(TAG, "Restored ${_realObjects.size} real objects")
+        }
+        
+        _isSimulating = false
+        _realObjects = emptyList()
     }
 
     fun setSelectedTab(tab: Int) {
@@ -257,6 +338,11 @@ class ObjectsViewModel @Inject constructor(
         val objects = result.objects
         _allObjects.value = objects
         _lastSyncedAt.value = result.lastSyncedAt
+        
+        // Store as real objects if not simulating
+        if (!_isSimulating) {
+            _realObjects = objects
+        }
 
         _labelFilters.value = buildLabelFilters(objects, _labelFilters.value)
 

@@ -23,13 +23,29 @@ class MoreViewModel @Inject constructor(
     val currentSession: StateFlow<Session?> = sessionManager.currentSessionFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val allSessions: StateFlow<List<Session>> = sessionManager.allSessionsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val isDebugModeEnabled: StateFlow<Boolean> = debugConfigurationManager.isDebugModeEnabledFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     private val _isSigningOut = MutableStateFlow(false)
     val isSigningOut: StateFlow<Boolean> = _isSigningOut.asStateFlow()
 
-    fun signOut() {
+    val hasMultipleAccounts: Boolean
+        get() = allSessions.value.size > 1
+
+    fun signOutCurrentAccount() {
+        viewModelScope.launch {
+            _isSigningOut.value = true
+            sessionManager.getCurrentSession()?.let { session ->
+                sessionManager.removeSession(session.id)
+            }
+            _isSigningOut.value = false
+        }
+    }
+
+    fun signOutAllAccounts() {
         viewModelScope.launch {
             _isSigningOut.value = true
             sessionManager.clearAllSessions()

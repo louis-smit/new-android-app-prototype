@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -42,6 +45,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -73,12 +79,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.content.Intent
 import android.net.Uri
+import no.solver.solverappdemo.data.models.ObjectLog
 import no.solver.solverappdemo.R
 import no.solver.solverappdemo.data.models.Command
 import no.solver.solverappdemo.data.models.ContextItem
@@ -127,9 +135,13 @@ fun ObjectDetailScreen(
     val cachedUnlockResult by viewModel.cachedUnlockResult.collectAsState()
 
     var showOverflowMenu by remember { mutableStateOf(false) }
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    
+    // Logs ViewModel - created lazily when logs tab is selected
+    val logsViewModel: ObjectLogsViewModel = hiltViewModel()
 
     // Bluetooth permission handling for Android 12+
     var pendingBluetoothAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -234,7 +246,9 @@ fun ObjectDetailScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = (uiState as? ObjectDetailUiState.Success)?.solverObject?.name ?: "Object"
+                        text = (uiState as? ObjectDetailUiState.Success)?.solverObject?.name ?: "Object",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 },
                 navigationIcon = {
@@ -348,48 +362,88 @@ fun ObjectDetailScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = { viewModel.refresh() },
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            when (val state = uiState) {
-                is ObjectDetailUiState.Loading -> {
-                    LoadingContent()
-                }
-                is ObjectDetailUiState.Success -> {
-                    ObjectDetailContent(
-                        solverObject = state.solverObject,
-                        baseUrl = apiBaseUrl,
-                        executingCommandId = executingCommandId,
-                        lockBrand = lockBrand,
-                        lockStatus = lockStatus,
-                        lockCapabilities = lockCapabilities,
-                        cachedOperation = cachedOperation,
-                        cachedUnlockResult = cachedUnlockResult,
-                        isDebugModeEnabled = isDebugModeEnabled,
-                        onCommandClick = { command ->
-                            viewModel.handleCommand(command)
+            // Tab selector
+            val tabOptions = listOf("Object", "Logs")
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                tabOptions.forEachIndexed { index, label ->
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(
+                            index = index,
+                            count = tabOptions.size
+                        ),
+                        onClick = { 
+                            selectedTabIndex = index
+                            if (index == 1) {
+                                logsViewModel.loadLogsIfNeeded()
+                            }
                         },
-                        onOpenInMaps = { lat, lon, name ->
-                            val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(${Uri.encode(name)})")
-                            val intent = Intent(Intent.ACTION_VIEW, uri)
-                            context.startActivity(intent)
-                        },
-                        onUnlock = { withBluetoothPermission { viewModel.executeCachedUnlock("unlock") } },
-                        onLock = { withBluetoothPermission { viewModel.executeCachedUnlock("lock") } },
-                        onCheckStatus = { withBluetoothPermission { viewModel.checkLockStatus() } },
-                        onGetKeys = { withBluetoothPermission { viewModel.fetchAndCacheKeys() } },
-                        onClearKeys = { viewModel.clearCachedKeys() }
-                    )
+                        selected = index == selectedTabIndex
+                    ) {
+                        Text(label)
+                    }
                 }
-                is ObjectDetailUiState.Error -> {
-                    ErrorContent(
-                        message = state.message,
-                        onRetry = { viewModel.retry() }
-                    )
+            }
+            
+            // Tab content
+            when (selectedTabIndex) {
+                0 -> {
+                    // Object tab
+                    PullToRefreshBox(
+                        isRefreshing = isRefreshing,
+                        onRefresh = { viewModel.refresh() },
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        when (val state = uiState) {
+                            is ObjectDetailUiState.Loading -> {
+                                LoadingContent()
+                            }
+                            is ObjectDetailUiState.Success -> {
+                                ObjectDetailContent(
+                                    solverObject = state.solverObject,
+                                    baseUrl = apiBaseUrl,
+                                    executingCommandId = executingCommandId,
+                                    lockBrand = lockBrand,
+                                    lockStatus = lockStatus,
+                                    lockCapabilities = lockCapabilities,
+                                    cachedOperation = cachedOperation,
+                                    cachedUnlockResult = cachedUnlockResult,
+                                    isDebugModeEnabled = isDebugModeEnabled,
+                                    onCommandClick = { command ->
+                                        viewModel.handleCommand(command)
+                                    },
+                                    onOpenInMaps = { lat, lon, name ->
+                                        val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(${Uri.encode(name)})")
+                                        val intent = Intent(Intent.ACTION_VIEW, uri)
+                                        context.startActivity(intent)
+                                    },
+                                    onUnlock = { withBluetoothPermission { viewModel.executeCachedUnlock("unlock") } },
+                                    onLock = { withBluetoothPermission { viewModel.executeCachedUnlock("lock") } },
+                                    onCheckStatus = { withBluetoothPermission { viewModel.checkLockStatus() } },
+                                    onGetKeys = { withBluetoothPermission { viewModel.fetchAndCacheKeys() } },
+                                    onClearKeys = { viewModel.clearCachedKeys() }
+                                )
+                            }
+                            is ObjectDetailUiState.Error -> {
+                                ErrorContent(
+                                    message = state.message,
+                                    onRetry = { viewModel.retry() }
+                                )
+                            }
+                        }
+                    }
+                }
+                1 -> {
+                    // Logs tab
+                    ObjectLogsContent(logsViewModel = logsViewModel)
                 }
             }
         }
@@ -1569,6 +1623,181 @@ private fun ErrorContentPreview() {
             message = "Network connection failed. Please check your internet connection.",
             onRetry = {}
         )
+    }
+}
+
+// MARK: - Object Logs Content
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ObjectLogsContent(
+    logsViewModel: ObjectLogsViewModel,
+    modifier: Modifier = Modifier
+) {
+    val uiState by logsViewModel.uiState.collectAsState()
+    
+    Box(modifier = modifier.fillMaxSize()) {
+        when {
+            uiState.isLoading && uiState.logs.isEmpty() -> {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator()
+                    Text(
+                        text = "Loading logs...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
+            }
+            uiState.error != null && uiState.logs.isEmpty() -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        modifier = Modifier.size(50.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        text = "Error loading logs",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                    Text(
+                        text = uiState.error!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 8.dp, start = 16.dp, end = 16.dp)
+                    )
+                    Button(
+                        onClick = { logsViewModel.loadLogs() },
+                        modifier = Modifier.padding(top = 16.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "Retry",
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                }
+            }
+            uiState.logs.isEmpty() -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_description),
+                        contentDescription = null,
+                        modifier = Modifier.size(50.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "No logs found",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
+            }
+            else -> {
+                PullToRefreshBox(
+                    isRefreshing = uiState.isRefreshing,
+                    onRefresh = { logsViewModel.refresh() },
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
+                        items(uiState.logs, key = { it.id }) { log ->
+                            ObjectLogRowItem(log = log)
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ObjectLogRowItem(
+    log: ObjectLog,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = log.userName ?: "Unknown User",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = log.formattedCreatedAt,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            log.status?.let { status ->
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        text = status,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+            log.action?.let { action ->
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = action,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
