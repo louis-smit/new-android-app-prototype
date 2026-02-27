@@ -171,9 +171,29 @@ private fun AccountListContent(
     onRemove: (String) -> Unit,
     onAddAccount: () -> Unit
 ) {
+    // Find current session for the header
+    val currentSession = sessions.find { it.id == currentSessionId }
+    
     LazyColumn(
         modifier = Modifier.fillMaxSize()
     ) {
+        // Current Account Profile Header
+        currentSession?.let { session ->
+            item {
+                CurrentAccountProfileHeader(session = session)
+            }
+        }
+        
+        // ALL ACCOUNTS Section Header
+        item {
+            Text(
+                text = "ALL ACCOUNTS",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+        
         // Accounts Section
         items(
             items = sessions,
@@ -312,6 +332,54 @@ private fun AccountListContent(
         // Spacer at bottom
         item {
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@Composable
+private fun CurrentAccountProfileHeader(
+    session: Session,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.AccountCircle,
+            contentDescription = null,
+            modifier = Modifier.size(56.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = session.displayName,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+
+            session.email?.let { email ->
+                Text(
+                    text = email,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+
+            Text(
+                text = session.provider.displayName,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

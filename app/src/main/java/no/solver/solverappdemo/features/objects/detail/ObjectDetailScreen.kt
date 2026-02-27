@@ -522,7 +522,7 @@ fun ObjectDetailScreen(
     // Use existing context and scope from above
     
     if (showPaymentSheet && paymentContext != null && paymentAvailableMethods != null) {
-        val sheetState = rememberModalBottomSheetState()
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = { viewModel.paymentMiddleware.dismissPaymentSheet() },
             sheetState = sheetState
@@ -547,7 +547,7 @@ fun ObjectDetailScreen(
     val subscriptionIsLoading by viewModel.subscriptionMiddleware.isLoading.collectAsState()
     
     if (showSubscriptionOptionsSheet && subscriptionContext != null) {
-        val sheetState = rememberModalBottomSheetState()
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = { viewModel.subscriptionMiddleware.dismissSubscriptionOptionsSheet() },
             sheetState = sheetState
@@ -569,7 +569,7 @@ fun ObjectDetailScreen(
     val subscriptionPaymentMethods by viewModel.subscriptionMiddleware.availableMethods.collectAsState()
 
     if (showSubPaymentSheet && selectedSubscription != null && subscriptionPaymentMethods != null) {
-        val sheetState = rememberModalBottomSheetState()
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = { viewModel.subscriptionMiddleware.dismissPaymentMethodSheet() },
             sheetState = sheetState
@@ -806,8 +806,19 @@ private fun ObjectDetailContent(
             onOpenInMaps = onOpenInMaps
         )
 
+        // Filter out smart lock commands (GetKeys, Unlock, Lock) when showing SmartLockCard
+        // since they are shown in the dedicated lock UI at the top
+        val displayCommands = if (lockBrand != null) {
+            val smartLockCommandNames = setOf("getkeys", "unlock", "lock")
+            solverObject.getCommands().filter { command ->
+                command.commandName.lowercase() !in smartLockCommandNames
+            }
+        } else {
+            solverObject.getCommands()
+        }
+
         CommandsCard(
-            commands = solverObject.getCommands(),
+            commands = displayCommands,
             executingCommandId = executingCommandId,
             onCommandClick = onCommandClick
         )

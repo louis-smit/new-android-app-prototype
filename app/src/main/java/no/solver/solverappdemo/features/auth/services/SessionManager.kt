@@ -183,11 +183,13 @@ class SessionManager @Inject constructor(
             objectsCacheRepository.get().clearCacheForAccount(previousSessionId)
         }
         
+        // Update tokens BEFORE dataStore.edit to avoid race condition
+        // (dataStore.edit triggers Flow emission which may start API calls)
+        targetSession?.let { updateTokensForSession(it) }
+        
         dataStore.edit { prefs ->
             prefs[KEY_CURRENT_SESSION_ID] = sessionId
         }
-
-        targetSession?.let { updateTokensForSession(it) }
     }
 
     fun updateTokensForSession(session: Session) {

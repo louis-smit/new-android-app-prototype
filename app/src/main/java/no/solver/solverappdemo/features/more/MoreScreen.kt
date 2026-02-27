@@ -42,8 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import no.solver.solverappdemo.BuildConfig
 import no.solver.solverappdemo.features.auth.models.Session
+import no.solver.solverappdemo.ui.components.AppVersionText
 
 enum class MoreItem(
     val label: String,
@@ -110,14 +110,6 @@ fun MoreScreen(
         modifier = Modifier.fillMaxSize(),
         contentPadding = WindowInsets.statusBars.asPaddingValues()
     ) {
-        // Profile Section
-        currentSession?.let { session ->
-            item {
-                MoreProfileSection(session = session)
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            }
-        }
-
         // Features Header
         item {
             Text(
@@ -152,49 +144,14 @@ fun MoreScreen(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun MoreProfileSection(
-    session: Session,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = Icons.Default.AccountCircle,
-            contentDescription = null,
-            modifier = Modifier.size(56.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Column(
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = session.displayName,
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            session.email?.let { email ->
-                Text(
-                    text = email,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Text(
-                text = session.provider.name,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        
+        // Version info at bottom
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            AppVersionText(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
             )
         }
     }

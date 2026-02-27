@@ -2,6 +2,7 @@ package no.solver.solverappdemo.features.auth.services
 
 import android.app.Activity
 import android.content.Context
+import android.os.Build
 import android.util.Base64
 import android.util.Log
 import com.microsoft.identity.client.PublicClientApplicationConfiguration
@@ -18,14 +19,23 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import no.solver.solverappdemo.BuildConfig
+import no.solver.solverappdemo.core.config.APIConfiguration
+import no.solver.solverappdemo.core.config.AppEnvironment
 import no.solver.solverappdemo.core.config.AuthConfiguration
 import no.solver.solverappdemo.core.config.AuthEnvironment
+import no.solver.solverappdemo.core.config.AuthProvider
 import no.solver.solverappdemo.core.storage.TokenStorage
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.UserInfo
+import java.net.HttpURLConnection
+import java.net.URL
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
@@ -38,6 +48,7 @@ class MicrosoftAuthService @Inject constructor(
 ) {
     private var msalApp: IMultipleAccountPublicClientApplication? = null
     private var currentEnvironment: AuthEnvironment = AuthEnvironment.SOLVER
+    private val json = Json { ignoreUnknownKeys = true }
 
     companion object {
         private const val TAG = "MicrosoftAuthService"
@@ -252,6 +263,139 @@ class MicrosoftAuthService @Inject constructor(
         tokens.refreshToken?.let { tokenStorage.saveRefreshToken(it) }
         tokenStorage.saveTokenExpiry(tokens.expiresAtMillis)
     }
+
+    suspend fun registerAndFetchUserId(tokens: AuthTokens, environment: AuthEnvironment): String {
+        val registrationConfig = APIConfiguration.current(
+            environment = environment,
+            mode = AppEnvironment.current,
+            provider = AuthProvider.VIPPS
+        )
+        val registrationBaseUrl = registrationConfig.baseURL
+
+        val masterToken = fetchMasterToken(registrationBaseUrl)
+
+        registerUser(registrationBaseUrl, masterToken, tokens)
+
+        val msApiConfig = APIConfiguration.current(
+            environment = environment,
+            mode = AppEnvironment.current,
+            provider = AuthProvider.MICROSOFT
+        )
+        val msApiBaseUrl = msApiConfig.baseURL
+
+        return fetchUserId(msApiBaseUrl, tokens.accessToken)
+    }
+
+    private suspend fun fetchMasterToken(baseUrl: String): String {
+        Log.d(TAG, "🔑 Getting master token for MS user registration")
+
+        return withContext(Dispatchers.IO) {
+            val url = URL("$baseUrl/api/Token")
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept", "application/json")
+                doOutput = true
+            }
+
+            val body = """
+                {
+                    "oid": "${BuildConfig.APP_USER_OID}",
+                    "password": "${BuildConfig.APP_USER_PASSWORD}",
+                    "mobile": "",
+                    "appId": ""
+                }
+            """.trimIndent()
+            connection.outputStream.bufferedWriter().use { it.write(body) }
+
+            if (connection.responseCode == 200) {
+                val responseBody = connection.inputStream.bufferedReader().readText()
+                val tokenResponse = json.decodeFromString<MsMasterTokenResponse>(responseBody)
+                Log.d(TAG, "✅ Got master token for MS registration")
+                tokenResponse.accessToken
+            } else {
+                val errorBody = connection.errorStream?.bufferedReader()?.readText() ?: ""
+                Log.e(TAG, "❌ Master token request failed: ${connection.responseCode} - $errorBody")
+                throw MsAuthRegistrationException("Failed to get master token: ${connection.responseCode}")
+            }
+        }
+    }
+
+    private suspend fun registerUser(baseUrl: String, masterToken: String, tokens: AuthTokens) {
+        Log.d(TAG, "📝 Registering MS user on Solver (fire-and-forget)")
+
+        withContext(Dispatchers.IO) {
+            try {
+                val url = URL("$baseUrl/api/User/Register")
+                val connection = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("Authorization", "Bearer $masterToken")
+                    doOutput = true
+                }
+
+                val deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}"
+                val body = """
+                    {
+                        "sid": "${tokens.userInfo?.oid ?: ""}",
+                        "userId": 0,
+                        "pin": "",
+                        "userTypeId": 1,
+                        "active": false,
+                        "displayName": "${tokens.userInfo?.displayName ?: ""}",
+                        "userName": "${tokens.userInfo?.email ?: ""}",
+                        "password": "",
+                        "appId": "",
+                        "deviceModel": "$deviceModel"
+                    }
+                """.trimIndent()
+                connection.outputStream.bufferedWriter().use { it.write(body) }
+
+                val responseCode = connection.responseCode
+                if (responseCode in 200..299) {
+                    Log.d(TAG, "✅ MS user registered successfully")
+                } else {
+                    val errorBody = connection.errorStream?.bufferedReader()?.readText() ?: ""
+                    Log.w(TAG, "⚠️ MS user registration returned $responseCode - $errorBody")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "⚠️ MS user registration failed (non-fatal)", e)
+            }
+        }
+    }
+
+    private suspend fun fetchUserId(msApiBaseUrl: String, accessToken: String): String {
+        Log.d(TAG, "👤 Fetching real userId from /api/User/Me")
+
+        return withContext(Dispatchers.IO) {
+            val url = URL("$msApiBaseUrl/api/User/Me")
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                setRequestProperty("Authorization", "Bearer $accessToken")
+                setRequestProperty("Accept", "application/json")
+            }
+
+            if (connection.responseCode == 200) {
+                val responseBody = connection.inputStream.bufferedReader().readText()
+                val jsonElement = json.parseToJsonElement(responseBody)
+                val userId = jsonElement.jsonObject["userId"]?.jsonPrimitive?.int
+                    ?: throw MsAuthRegistrationException("No userId found in /api/User/Me response")
+                Log.d(TAG, "✅ Got real userId: $userId")
+                userId.toString()
+            } else {
+                val errorBody = connection.errorStream?.bufferedReader()?.readText() ?: ""
+                Log.e(TAG, "❌ /api/User/Me failed: ${connection.responseCode} - $errorBody")
+                throw MsAuthRegistrationException("Failed to fetch userId: ${connection.responseCode}")
+            }
+        }
+    }
 }
+
+@Serializable
+private data class MsMasterTokenResponse(
+    @SerialName("access_token") val accessToken: String
+)
+
+class MsAuthRegistrationException(message: String) : Exception(message)
 
 class AuthCancelledException(message: String) : Exception(message)

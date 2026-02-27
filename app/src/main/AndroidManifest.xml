@@ -15,6 +15,10 @@
     <!-- Bluetooth hardware feature (optional so app can run on devices without BLE) -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
+    <!-- Camera for QR code scanning -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <application
         android:name=".SolverApp"
         android:allowBackup="true"
@@ -39,28 +43,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             
-            <!-- QR/NFC deep link: solverapp://qr/{command}/{tag} -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="solverapp"
-                    android:host="qr" />
-            </intent-filter>
-
-            <!-- Universal Link: https://solver.no/qr/{command}/{tag} -->
-            <!-- Note: Requires .well-known/assetlinks.json on solver.no server -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="solver.no"
-                    android:pathPrefix="/qr/" />
-            </intent-filter>
-
             <!-- Payment callback: solverapp://vipps/callback -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -123,6 +105,38 @@
                     android:host="no.solver.solverappdemo"
                     android:path="/ga0RGNYHvNM5d0SLGQfpQWAPGJ8%3D"
                     android:scheme="msauth" />
+            </intent-filter>
+        </activity>
+
+        <!-- Transparent confirmation overlay for QR/NFC deep links -->
+        <activity
+            android:name=".core.deeplink.DeepLinkConfirmationActivity"
+            android:exported="true"
+            android:launchMode="standard"
+            android:theme="@style/Theme.SolverApp.Transparent"
+            android:excludeFromRecents="true"
+            android:taskAffinity="">
+
+            <!-- QR/NFC deep link: solverapp://qr/{command}/{tag} -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="solverapp"
+                    android:host="qr" />
+            </intent-filter>
+
+            <!-- Universal Link: https://solver.no/{command}/{tag} or https://solver.no/qr/{command}/{tag} -->
+            <!-- Requires .well-known/assetlinks.json on solver.no server -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="solver.no"
+                    android:pathPrefix="/" />
             </intent-filter>
         </activity>
 

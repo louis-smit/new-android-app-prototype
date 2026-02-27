@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -64,6 +65,7 @@ import no.solver.solverappdemo.features.auth.LoginViewModel
 import no.solver.solverappdemo.features.auth.MobileLoginScreen
 import no.solver.solverappdemo.features.accounts.AccountsScreen
 import no.solver.solverappdemo.features.find.FindScreen
+import no.solver.solverappdemo.features.scan.ScanScreen
 import no.solver.solverappdemo.features.more.DanalockDemoScreen
 import no.solver.solverappdemo.features.more.DebugScreen
 import no.solver.solverappdemo.features.more.LogsScreen
@@ -206,6 +208,7 @@ fun AppNavHost(
 
         composable<NavRoute.Main> {
             MainScreen(
+                deepLinkViewModel = deepLinkViewModel,
                 onObjectClick = { solverObject ->
                     navController.navigate(NavRoute.ObjectDetail(solverObject.id))
                 },
@@ -419,6 +422,20 @@ fun AppNavHost(
         }
     }
         
+        // Confirmation bottom sheet for QR/NFC commands
+        if (deepLinkState.showConfirmation && deepLinkState.confirmationState != null) {
+            ModalBottomSheet(
+                onDismissRequest = { deepLinkViewModel.cancelConfirmation() },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ) {
+                DeepLinkConfirmationSheetContent(
+                    state = deepLinkState.confirmationState!!,
+                    onConfirm = { deepLinkViewModel.confirmExecution() },
+                    onCancel = { deepLinkViewModel.cancelConfirmation() }
+                )
+            }
+        }
+        
         // Deep link loading overlay (matches iOS)
         // Shows when executing a QR command
         if (deepLinkState.isExecuting) {
@@ -475,7 +492,7 @@ fun AppNavHost(
         if (showPaymentSheet && paymentContext != null && paymentAvailableMethods != null) {
             ModalBottomSheet(
                 onDismissRequest = { deepLinkViewModel.paymentMiddleware.dismissPaymentSheet() },
-                sheetState = rememberModalBottomSheetState()
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ) {
                 PaymentMethodSheetContent(
                     context = paymentContext!!,
@@ -497,7 +514,7 @@ fun AppNavHost(
         if (showSubscriptionSheet && subscriptionContext != null) {
             ModalBottomSheet(
                 onDismissRequest = { deepLinkViewModel.subscriptionMiddleware.dismissSubscriptionOptionsSheet() },
-                sheetState = rememberModalBottomSheetState()
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ) {
                 SubscriptionOptionsSheetContent(
                     context = subscriptionContext!!,
@@ -617,12 +634,14 @@ enum class MainDestination(
 ) {
     OBJECTS("Objects", Icons.Default.Home),
     FIND("Find", Icons.Default.Search),
-    ACCOUNTS("Accounts", Icons.Default.AccountCircle),
+    SCAN("Scan", Icons.Default.QrCodeScanner),
     MORE("More", Icons.Default.MoreVert)
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
+    deepLinkViewModel: DeepLinkViewModel,
     onObjectClick: (SolverObject) -> Unit = {},
     onSignOut: () -> Unit = {},
     onNavigateToMoreItem: (MoreItem) -> Unit = {},
@@ -631,6 +650,34 @@ fun MainScreen(
     onNavigateToMobileLogin: () -> Unit = {}
 ) {
     var currentDestination by rememberSaveable { mutableStateOf(MainDestination.OBJECTS) }
+    var showAccountModal by remember { mutableStateOf(false) }
+
+    // Account modal (bottom sheet)
+    if (showAccountModal) {
+        ModalBottomSheet(
+            onDismissRequest = { showAccountModal = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            AccountsScreen(
+                onNavigateToMicrosoftLogin = {
+                    showAccountModal = false
+                    onNavigateToMicrosoftLogin()
+                },
+                onNavigateToVippsLogin = {
+                    showAccountModal = false
+                    onNavigateToVippsLogin()
+                },
+                onNavigateToMobileLogin = {
+                    showAccountModal = false
+                    onNavigateToMobileLogin()
+                },
+                onAllAccountsRemoved = {
+                    showAccountModal = false
+                    onSignOut()
+                }
+            )
+        }
+    }
 
     NavigationSuiteScaffold(
         navigationSuiteItems = {
@@ -652,7 +699,8 @@ fun MainScreen(
         when (currentDestination) {
             MainDestination.OBJECTS -> {
                 ObjectsScreen(
-                    onObjectClick = onObjectClick
+                    onObjectClick = onObjectClick,
+                    onShowAccountModal = { showAccountModal = true }
                 )
             }
             MainDestination.FIND -> {
@@ -660,12 +708,9 @@ fun MainScreen(
                     onObjectClick = onObjectClick
                 )
             }
-            MainDestination.ACCOUNTS -> {
-                AccountsScreen(
-                    onNavigateToMicrosoftLogin = onNavigateToMicrosoftLogin,
-                    onNavigateToVippsLogin = onNavigateToVippsLogin,
-                    onNavigateToMobileLogin = onNavigateToMobileLogin,
-                    onAllAccountsRemoved = onSignOut
+            MainDestination.SCAN -> {
+                ScanScreen(
+                    deepLinkViewModel = deepLinkViewModel
                 )
             }
             MainDestination.MORE -> {

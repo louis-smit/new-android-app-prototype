@@ -15,7 +15,7 @@ android {
         applicationId = "no.solver.solverappdemo"
         minSdk = 24
         targetSdk = 35
-        versionCode = 13
+        versionCode = 14
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -110,6 +110,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.navigation.compose)
 
@@ -156,6 +157,14 @@ dependencies {
 
     // Stripe Payments
     implementation(libs.stripe.android)
+
+    // CameraX (QR Scanner)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
+
+    // ML Kit Barcode Scanning (QR Scanner)
+    implementation(libs.mlkit.barcode)
 
     // Testing
     testImplementation(libs.junit)

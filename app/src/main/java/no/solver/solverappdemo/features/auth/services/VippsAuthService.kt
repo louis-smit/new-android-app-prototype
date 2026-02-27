@@ -489,10 +489,13 @@ class VippsAuthService @Inject constructor(
                 val responseBody = connection.inputStream.bufferedReader().readText()
                 val userId = try {
                     val jsonElement = json.parseToJsonElement(responseBody)
-                    jsonElement.jsonObject["userId"]?.jsonPrimitive?.int ?: 1
+                    jsonElement.jsonObject["userId"]?.jsonPrimitive?.int
+                        ?: throw VippsAuthException("No userId in registration response")
+                } catch (e: VippsAuthException) {
+                    throw e
                 } catch (e: Exception) {
-                    Log.w(TAG, "⚠️ User registered but no userId in response, using placeholder 1")
-                    1
+                    Log.e(TAG, "❌ Failed to parse userId from registration response", e)
+                    throw VippsAuthException("Failed to parse userId from registration response")
                 }
                 Log.d(TAG, "✅ User registered with ID: $userId")
                 userId

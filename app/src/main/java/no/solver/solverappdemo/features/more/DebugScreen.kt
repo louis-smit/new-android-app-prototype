@@ -194,12 +194,13 @@ fun DebugScreen(
                     DebugDivider()
                 }
 
-                // TODO: Revisit - userId fallback to session.id.take(8) may not match iOS behavior
-                // DebugInfoRow(
-                //     label = "User ID",
-                //     value = session.tokens.userId ?: session.id.take(8)
-                // )
-                // DebugDivider()
+                session.tokens.userId?.let { userId ->
+                    DebugInfoRow(
+                        label = "User ID",
+                        value = userId
+                    )
+                    DebugDivider()
+                }
 
                 DebugInfoRow(
                     label = "Token Expires",

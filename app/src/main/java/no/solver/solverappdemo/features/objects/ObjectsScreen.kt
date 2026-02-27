@@ -66,7 +66,8 @@ import no.solver.solverappdemo.ui.theme.SolverAppTheme
 @Composable
 fun ObjectsScreen(
     viewModel: ObjectsViewModel = hiltViewModel(),
-    onObjectClick: (SolverObject) -> Unit = {}
+    onObjectClick: (SolverObject) -> Unit = {},
+    onShowAccountModal: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -80,6 +81,7 @@ fun ObjectsScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val labelFilters by viewModel.labelFilters.collectAsState()
     val activeFilterCount by viewModel.activeFilterCount.collectAsState()
+    val currentSession by viewModel.currentSession.collectAsState()
 
     var showLabelFilters by remember { mutableStateOf(false) }
     val filterSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -100,7 +102,13 @@ fun ObjectsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Objects") }
+                title = { Text("Objects") },
+                actions = {
+                    no.solver.solverappdemo.features.accounts.components.AccountAvatarButton(
+                        session = currentSession,
+                        onClick = onShowAccountModal
+                    )
+                }
             )
         }
     ) { innerPadding ->

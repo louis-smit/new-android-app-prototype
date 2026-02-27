@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import dagger.hilt.android.AndroidEntryPoint
+import no.solver.solverappdemo.core.deeplink.DeepLinkConfirmationActivity
 import no.solver.solverappdemo.core.deeplink.DeepLinkParser
 import no.solver.solverappdemo.core.deeplink.DeepLinkViewModel
 import no.solver.solverappdemo.features.objects.payment.StripePaymentHandler
@@ -75,8 +76,11 @@ class MainActivity : ComponentActivity() {
         // Only handle QR command deep links here
         // Vipps OAuth is handled by AppAuth's RedirectUriReceiverActivity
         if (DeepLinkParser.isQrCommandDeepLink(uri)) {
-            Log.i(TAG, "📲 Processing QR deep link: $uri")
-            deepLinkViewModel.handle(uri)
+            val confirmed = intent.getBooleanExtra(
+                DeepLinkConfirmationActivity.EXTRA_CONFIRMED, false
+            )
+            Log.i(TAG, "📲 Processing QR deep link: $uri (confirmed=$confirmed)")
+            deepLinkViewModel.handle(uri, confirmed = confirmed)
         }
     }
 }

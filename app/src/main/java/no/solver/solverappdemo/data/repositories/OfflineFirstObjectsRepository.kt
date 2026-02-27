@@ -3,6 +3,10 @@ package no.solver.solverappdemo.data.repositories
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import no.solver.solverappdemo.core.network.ApiException
 import no.solver.solverappdemo.core.network.ApiResult
 import no.solver.solverappdemo.data.api.ApiClientManager
@@ -27,6 +31,7 @@ sealed class ObjectsLoadResult {
 }
 
 @Singleton
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class OfflineFirstObjectsRepository @Inject constructor(
     private val apiClientManager: ApiClientManager,
     private val sessionManager: SessionManager,
@@ -37,8 +42,15 @@ class OfflineFirstObjectsRepository @Inject constructor(
     }
 
     fun observeCachedObjects(): Flow<List<SolverObject>> {
-        val accountId = getCurrentAccountId() ?: return kotlinx.coroutines.flow.flowOf(emptyList())
-        return cacheRepository.observeObjects(accountId)
+        // Use flatMapLatest to reactively observe the current session and its objects
+        return sessionManager.currentSessionFlow.flatMapLatest { session ->
+            val accountId = session?.id
+            if (accountId != null) {
+                cacheRepository.observeObjects(accountId)
+            } else {
+                flowOf(emptyList())
+            }
+        }
     }
 
     suspend fun loadObjects(forceRefresh: Boolean = false): ObjectsLoadResult {
@@ -162,9 +174,7 @@ class OfflineFirstObjectsRepository @Inject constructor(
         Log.d(TAG, "Cleared all cache")
     }
 
-    private fun getCurrentAccountId(): String? {
-        return kotlinx.coroutines.runBlocking {
-            sessionManager.getCurrentSession()?.id
-        }
+    private suspend fun getCurrentAccountId(): String? {
+        return sessionManager.getCurrentSession()?.id
     }
 }

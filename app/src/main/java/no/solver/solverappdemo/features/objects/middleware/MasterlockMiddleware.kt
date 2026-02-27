@@ -28,7 +28,7 @@ class MasterlockMiddleware @Inject constructor(
 ) : CommandMiddleware {
 
     override val name: String = "MasterlockMiddleware"
-    override val shouldEarlyExit: Boolean = true
+    override val shouldEarlyExit: Boolean = false  // Let other middleware run after (e.g., SetAPIStatusMiddleware)
 
     override fun matches(response: ExecuteResponse, command: Command): Boolean {
         // Check if this is a Masterlock based on objectType

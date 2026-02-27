@@ -98,11 +98,14 @@ class LoginViewModel @Inject constructor(
                 microsoftAuthService.initialize(environment)
                 
                 val tokens = microsoftAuthService.signIn(activity)
-                
+
+                val realUserId = microsoftAuthService.registerAndFetchUserId(tokens, environment)
+                val tokensWithUserId = tokens.copy(userId = realUserId)
+
                 sessionManager.createSession(
                     provider = AuthProvider.MICROSOFT,
                     environment = environment,
-                    tokens = tokens
+                    tokens = tokensWithUserId
                 )
 
                 Log.d(TAG, "Microsoft sign-in successful")

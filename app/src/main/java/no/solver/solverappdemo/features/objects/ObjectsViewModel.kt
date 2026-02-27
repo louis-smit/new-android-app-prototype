@@ -109,6 +109,13 @@ class ObjectsViewModel @Inject constructor(
     private val _lastSyncedAt = MutableStateFlow<Long?>(null)
     val lastSyncedAt: StateFlow<Long?> = _lastSyncedAt.asStateFlow()
 
+    val currentSession = sessionManager.currentSessionFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = null
+        )
+
     private val _selectedTab = MutableStateFlow(0) // 0 = All, 1 = Favourites
     val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
 
@@ -173,6 +180,7 @@ class ObjectsViewModel @Inject constructor(
                     _realObjects = emptyList()
                     // Reset state and reload for the new account
                     _allObjects.value = emptyList()
+                    _labelFilters.value = emptyList()  // Reset label filters for new account
                     loadObjects()
                     loadFavourites()
                 }

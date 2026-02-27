@@ -6,8 +6,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.network.ApiResult
 import no.solver.solverappdemo.data.models.Command
@@ -26,12 +29,30 @@ import no.solver.solverappdemo.features.objects.middleware.SubscriptionMiddlewar
 import javax.inject.Inject
 
 /**
+ * Confirmation state for the bottom sheet shown before executing a QR/NFC command.
+ */
+sealed interface ConfirmationState {
+    data object Loading : ConfirmationState
+    data class Ready(
+        val command: String,
+        val tag: String,
+        val objectName: String,
+        val objectTypeId: Int
+    ) : ConfirmationState
+    data class Error(val message: String) : ConfirmationState
+}
+
+/**
  * UI state for deep link execution.
  * Mirrors iOS DeepLinkHandler state.
  */
 data class DeepLinkUiState(
     /** True while executing a QR command */
     val isExecuting: Boolean = false,
+    /** True when confirmation sheet should be shown */
+    val showConfirmation: Boolean = false,
+    /** Confirmation state (loading/ready/error) */
+    val confirmationState: ConfirmationState? = null,
     /** True when status sheet should be shown */
     val sheetVisible: Boolean = false,
     /** The object for the status sheet */
@@ -93,16 +114,46 @@ class DeepLinkViewModel @Inject constructor(
         )
     }
 
+    /**
+     * Whether a deep link flow is currently active (executing, showing sheets, or middleware UI open).
+     * Matches iOS DeepLinkHandler.isBusy.
+     * Used by ScanScreen to detect when the entire flow (including middleware dialogs) is complete.
+     */
+    val isBusy: StateFlow<Boolean> = combine(
+        _uiState,
+        paymentMiddleware.showPaymentSheet,
+        paymentMiddleware.showPaymentCallback,
+        paymentMiddleware.showSuccessAlert,
+        paymentMiddleware.showErrorAlert,
+        subscriptionMiddleware.showSubscriptionOptionsSheet,
+        subscriptionMiddleware.showPaymentMethodSheet,
+        subscriptionMiddleware.showSuccessAlert,
+        subscriptionMiddleware.showErrorAlert
+    ) { values ->
+        val state = values[0] as DeepLinkUiState
+        val anySheetOpen = values.drop(1).any { it as Boolean }
+        state.isExecuting || state.showConfirmation || state.sheetVisible || anySheetOpen
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = false
+    )
+
     // Track last handled URI to prevent duplicate execution
     private var lastHandledUri: Uri? = null
     private var lastHandledTimestamp: Long = 0L
 
+    // Pending command awaiting user confirmation
+    private var pendingCommand: String? = null
+    private var pendingTag: String? = null
+
     /**
      * Handle incoming URL from QR scan or NFC tap.
-     * Called from MainActivity.onCreate or onNewIntent.
+     * Shows a confirmation sheet before executing.
+     * @param confirmed If true, skip confirmation and execute immediately (used by DeepLinkConfirmationActivity).
      */
-    fun handle(uri: Uri) {
-        Log.i(TAG, "📲 Received deep link: ${uri}")
+    fun handle(uri: Uri, confirmed: Boolean = false) {
+        Log.i(TAG, "📲 Received deep link: ${uri} (confirmed=$confirmed)")
 
         // Dedupe: ignore if same URI within 2 seconds
         val now = System.currentTimeMillis()
@@ -123,13 +174,76 @@ class DeepLinkViewModel @Inject constructor(
         when (deepLink) {
             is DeepLink.QrCommand -> {
                 Log.i(TAG, "🔓 QR command: ${deepLink.command}, tag: ${deepLink.tag}")
-                executeQrCommand(deepLink.command, deepLink.tag)
+                if (confirmed) {
+                    executeQrCommand(deepLink.command, deepLink.tag)
+                } else {
+                    showConfirmation(deepLink.command, deepLink.tag)
+                }
             }
             is DeepLink.PaymentCallback -> {
                 Log.i(TAG, "💳 Payment callback: ${deepLink.method}, reference: ${deepLink.reference}")
                 handlePaymentCallback(deepLink.method, deepLink.reference)
             }
         }
+    }
+
+    /**
+     * Resolve the tag and show a confirmation sheet before executing.
+     */
+    private fun showConfirmation(command: String, tag: String) {
+        pendingCommand = command
+        pendingTag = tag
+
+        _uiState.value = DeepLinkUiState(
+            showConfirmation = true,
+            confirmationState = ConfirmationState.Loading
+        )
+
+        viewModelScope.launch {
+            when (val result = tagRepository.getObjectByTag(tag)) {
+                is ApiResult.Success -> {
+                    val obj = result.data
+                    Log.i(TAG, "✅ Resolved tag $tag → ${obj.name}")
+                    _uiState.value = _uiState.value.copy(
+                        confirmationState = ConfirmationState.Ready(
+                            command = command,
+                            tag = tag,
+                            objectName = obj.name,
+                            objectTypeId = obj.objectTypeId
+                        )
+                    )
+                }
+                is ApiResult.Error -> {
+                    Log.e(TAG, "❌ Failed to resolve tag: $tag")
+                    _uiState.value = _uiState.value.copy(
+                        confirmationState = ConfirmationState.Error(
+                            result.exception.message ?: "Could not find object"
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * User confirmed the command — proceed with execution.
+     */
+    fun confirmExecution() {
+        val command = pendingCommand ?: return
+        val tag = pendingTag ?: return
+        pendingCommand = null
+        pendingTag = null
+        _uiState.value = DeepLinkUiState()
+        executeQrCommand(command, tag)
+    }
+
+    /**
+     * User cancelled the confirmation.
+     */
+    fun cancelConfirmation() {
+        pendingCommand = null
+        pendingTag = null
+        _uiState.value = DeepLinkUiState()
     }
 
     /**

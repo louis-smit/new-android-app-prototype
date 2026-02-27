@@ -285,7 +285,67 @@ fun AccountHeaderCard(
     }
 }
 
+/**
+ * Tappable avatar button for toolbar (Apple Music style)
+ * Shows user initials in a circle, or generic icon if no session
+ */
+@Composable
+fun AccountAvatarButton(
+    session: Session?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: Dp = 32.dp
+) {
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+    ) {
+        if (session != null) {
+            AvatarView(
+                initials = session.tokens.userInfo?.initials ?: "??",
+                provider = session.provider,
+                size = size
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.AccountCircle,
+                contentDescription = "Account",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(size)
+            )
+        }
+    }
+}
+
 // Previews
+
+@Preview(showBackground = true)
+@Composable
+private fun AccountAvatarButtonPreview() {
+    val session = Session(
+        id = "1",
+        provider = AuthProvider.MICROSOFT,
+        environment = AuthEnvironment.SOLVER,
+        tokens = AuthTokens(
+            accessToken = "token",
+            refreshToken = "refresh",
+            expiresAtMillis = System.currentTimeMillis() + 3600000,
+            userInfo = UserInfo(
+                displayName = "John Doe",
+                email = "john.doe@company.com",
+                givenName = "John",
+                familyName = "Doe"
+            )
+        )
+    )
+
+    Row(modifier = Modifier.padding(16.dp)) {
+        AccountAvatarButton(session = session, onClick = {})
+        Spacer(modifier = Modifier.width(16.dp))
+        AccountAvatarButton(session = null, onClick = {})
+    }
+}
 
 @Preview(showBackground = true)
 @Composable

@@ -51,6 +51,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.hilt.navigation.compose.hiltViewModel
 import no.solver.solverappdemo.R
 import no.solver.solverappdemo.core.config.AuthProvider
+import no.solver.solverappdemo.ui.components.AppVersionText
 import no.solver.solverappdemo.ui.theme.SolverAppTheme
 
 // iOS-matching colors
@@ -198,7 +199,12 @@ fun LoginScreen(
                 onMobileSignIn = onMobileSignIn
             )
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // Version info at bottom
+            AppVersionText()
+            
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

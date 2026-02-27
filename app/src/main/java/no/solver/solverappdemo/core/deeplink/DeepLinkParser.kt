@@ -10,6 +10,7 @@ import no.solver.solverappdemo.data.models.PaymentMethod
  * - solverapp://qr/{command}/{tag}
  * - solverapp://{method}/callback?reference={orderId}
  * - https://solver.no/qr/{command}/{tag}
+ * - https://solver.no/{command}/{tag}  (NFC tags written by legacy apps)
  */
 object DeepLinkParser {
     
@@ -50,13 +51,22 @@ object DeepLinkParser {
             )
         }
 
-        // Universal Link: https://solver.no/qr/{command}/{tag}
-        // host = "solver.no", pathSegments = ["qr", command, tag]
-        if (scheme == "https" && host == "solver.no" && segments.size >= 3 && segments[0] == "qr") {
-            return DeepLink.QrCommand(
-                command = segments[1],
-                tag = segments[2]
-            )
+        // Universal Link: https://solver.no/...
+        if (scheme == "https" && host == "solver.no") {
+            // With /qr/ prefix: https://solver.no/qr/{command}/{tag}
+            if (segments.size >= 3 && segments[0] == "qr") {
+                return DeepLink.QrCommand(
+                    command = segments[1],
+                    tag = segments[2]
+                )
+            }
+            // Without /qr/ prefix: https://solver.no/{command}/{tag} (legacy NFC tags)
+            if (segments.size >= 2) {
+                return DeepLink.QrCommand(
+                    command = segments[0],
+                    tag = segments[1]
+                )
+            }
         }
 
         return null
