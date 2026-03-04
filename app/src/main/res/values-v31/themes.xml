@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.SolverApp" parent="Theme.SolverApp.Base">
+        <!-- Android 12+ system launch splash: keep same logo and white canvas as login screen. -->
+        <item name="android:windowSplashScreenBackground">@android:color/white</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/solver_logo</item>
+    </style>
+
+</resources>

@@ -1,5 +1,10 @@
 package no.solver.solverappdemo.features.accounts
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
@@ -50,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -61,6 +67,8 @@ import no.solver.solverappdemo.R
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
 import no.solver.solverappdemo.features.accounts.components.AccountRowItem
+import no.solver.solverappdemo.features.auth.LoginUiState
+import no.solver.solverappdemo.features.auth.LoginViewModel
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.Session
 import no.solver.solverappdemo.features.auth.models.UserInfo
@@ -71,20 +79,30 @@ private val VippsOrange = Color(0xFFFF5B24)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountsScreen(
-    onNavigateToMicrosoftLogin: () -> Unit,
-    onNavigateToVippsLogin: () -> Unit,
     onNavigateToMobileLogin: () -> Unit,
     onAllAccountsRemoved: () -> Unit,
-    viewModel: AccountsViewModel = hiltViewModel()
+    onDone: () -> Unit,
+    viewModel: AccountsViewModel = hiltViewModel(),
+    loginViewModel: LoginViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val loginUiState by loginViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
+    val isAuthLoading = loginUiState is LoginUiState.SigningIn
+    val isLoading = uiState.isLoading || isAuthLoading
+    var pendingProviderAuth by remember { mutableStateOf<AuthProvider?>(null) }
+
+    val vippsAuthLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        loginViewModel.handleVippsAuthResult(result.data)
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is AccountsEvent.NavigateToMicrosoftLogin -> onNavigateToMicrosoftLogin()
-                is AccountsEvent.NavigateToVippsLogin -> onNavigateToVippsLogin()
                 is AccountsEvent.NavigateToMobileLogin -> onNavigateToMobileLogin()
                 is AccountsEvent.AllAccountsRemoved -> onAllAccountsRemoved()
             }
@@ -98,6 +116,34 @@ fun AccountsScreen(
         }
     }
 
+    LaunchedEffect(loginUiState) {
+        if (loginUiState is LoginUiState.Error) {
+            snackbarHostState.showSnackbar((loginUiState as LoginUiState.Error).message)
+            loginViewModel.clearError()
+        }
+    }
+
+    // Match iOS flow: dismiss add-account sheet first, then launch provider auth.
+    LaunchedEffect(uiState.showAddAccount, pendingProviderAuth, activity) {
+        val provider = pendingProviderAuth
+        if (!uiState.showAddAccount && provider != null) {
+            if (activity == null) {
+                snackbarHostState.showSnackbar("Unable to start sign-in right now")
+                pendingProviderAuth = null
+                return@LaunchedEffect
+            }
+
+            pendingProviderAuth = null
+            when (provider) {
+                AuthProvider.MICROSOFT -> loginViewModel.signInWithMicrosoft(activity)
+                AuthProvider.VIPPS -> loginViewModel.signInWithVipps(activity) { intent, _ ->
+                    vippsAuthLauncher.launch(intent)
+                }
+                AuthProvider.MOBILE -> onNavigateToMobileLogin()
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -108,6 +154,9 @@ fun AccountsScreen(
                         TextButton(onClick = { viewModel.onToggleEdit() }) {
                             Text(if (uiState.isEditing) "Done" else "Edit")
                         }
+                    }
+                    TextButton(onClick = onDone) {
+                        Text("Done")
                     }
                 }
             )
@@ -136,7 +185,7 @@ fun AccountsScreen(
             }
 
             // Loading overlay
-            if (uiState.isLoading) {
+            if (isLoading) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -152,13 +201,25 @@ fun AccountsScreen(
     // Add Account Sheet
     if (uiState.showAddAccount) {
         AddAccountSheet(
-            isLoading = uiState.isLoading,
+            isLoading = isLoading,
             onDismiss = { viewModel.onHideAddAccount() },
-            onMicrosoft = { viewModel.onAddMicrosoftAccount() },
-            onVipps = { viewModel.onAddVippsAccount() },
+            onMicrosoft = {
+                pendingProviderAuth = AuthProvider.MICROSOFT
+                viewModel.onHideAddAccount()
+            },
+            onVipps = {
+                pendingProviderAuth = AuthProvider.VIPPS
+                viewModel.onHideAddAccount()
+            },
             onMobile = { viewModel.onAddMobileAccount() }
         )
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -521,7 +582,7 @@ private fun AddAccountSheet(
                         painter = painterResource(id = R.drawable.ic_vipps),
                         contentDescription = null,
                         modifier = Modifier.size(20.dp),
-                        tint = VippsOrange
+                        tint = Color.Unspecified
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -587,13 +648,13 @@ private fun AccountListContentPreview() {
             tokens = AuthTokens(
                 accessToken = "token",
                 refreshToken = "refresh",
-                expiresAtMillis = System.currentTimeMillis() + 3600000,
-                userInfo = UserInfo(
-                    displayName = "John Doe",
-                    email = "john.doe@company.com",
-                    givenName = "John",
-                    familyName = "Doe"
-                )
+                expiresAtMillis = System.currentTimeMillis() + 3600000
+            ),
+            userInfo = UserInfo(
+                displayName = "John Doe",
+                email = "john.doe@company.com",
+                givenName = "John",
+                familyName = "Doe"
             )
         ),
         Session(
@@ -603,11 +664,11 @@ private fun AccountListContentPreview() {
             tokens = AuthTokens(
                 accessToken = "token",
                 refreshToken = "refresh",
-                expiresAtMillis = System.currentTimeMillis() + 3600000,
-                userInfo = UserInfo(
-                    displayName = "Anna Smith",
-                    email = "anna@solver.no"
-                )
+                expiresAtMillis = System.currentTimeMillis() + 3600000
+            ),
+            userInfo = UserInfo(
+                displayName = "Anna Smith",
+                email = "anna@solver.no"
             )
         )
     )

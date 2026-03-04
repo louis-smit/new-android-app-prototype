@@ -15,6 +15,7 @@ import no.solver.solverappdemo.core.storage.TokenStorage
 import no.solver.solverappdemo.data.cache.ObjectsCacheRepository
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.Session
+import no.solver.solverappdemo.features.auth.models.UserInfo
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -64,15 +65,17 @@ class SessionManager @Inject constructor(
     suspend fun createSession(
         provider: AuthProvider,
         environment: AuthEnvironment,
-        tokens: AuthTokens
+        tokens: AuthTokens,
+        userInfo: UserInfo? = null
     ): Session {
         // Check for existing session with same user identity (by email or userId)
-        val existingSession = findExistingSession(provider, tokens)
+        val existingSession = findExistingSession(provider, tokens, userInfo)
         
         if (existingSession != null) {
             // Update existing session with new tokens instead of creating duplicate
             val updatedSession = existingSession.copy(
                 tokens = tokens,
+                userInfo = userInfo ?: existingSession.userInfo,
                 environment = environment,
                 isActive = true
             )
@@ -101,6 +104,7 @@ class SessionManager @Inject constructor(
             provider = provider,
             environment = environment,
             tokens = tokens,
+            userInfo = userInfo,
             isActive = true
         )
 
@@ -123,9 +127,9 @@ class SessionManager @Inject constructor(
      * Find existing session for the same user identity.
      * Matches by email (primary) or userId, with same provider.
      */
-    private suspend fun findExistingSession(provider: AuthProvider, tokens: AuthTokens): Session? {
+    private suspend fun findExistingSession(provider: AuthProvider, tokens: AuthTokens, userInfo: UserInfo?): Session? {
         val sessions = getAllSessions()
-        val email = tokens.userInfo?.email
+        val email = userInfo?.email
         val userId = tokens.userId
         
         return sessions.find { session ->
@@ -225,6 +229,7 @@ class SessionManager @Inject constructor(
         provider = provider.name,
         environment = environment.name,
         tokens = tokens,
+        userInfo = userInfo,
         isActive = isActive
     )
 
@@ -233,6 +238,7 @@ class SessionManager @Inject constructor(
         provider = AuthProvider.valueOf(provider),
         environment = AuthEnvironment.valueOf(environment),
         tokens = tokens,
+        userInfo = userInfo,
         isActive = isActive
     )
 }
@@ -243,5 +249,6 @@ private data class SerializableSession(
     val provider: String,
     val environment: String,
     val tokens: AuthTokens,
+    val userInfo: UserInfo? = null,
     val isActive: Boolean
 )

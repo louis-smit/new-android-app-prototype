@@ -26,11 +26,13 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -63,7 +65,8 @@ fun LoginScreen(
     viewModel: LoginViewModel = hiltViewModel(),
     onLoginSuccess: () -> Unit = {},
     onMobileSignIn: () -> Unit = {},
-    autoTriggerProvider: String? = null
+    autoTriggerProvider: String? = null,
+    isAddAccountFlow: Boolean = false
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
@@ -77,6 +80,8 @@ fun LoginScreen(
     var debugTapCount by remember { mutableIntStateOf(0) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
     val debugTapTimeout = 2000L
+    var hasStartedAddAccountAttempt by remember(isAddAccountFlow) { mutableStateOf(false) }
+    var hasObservedAddAccountSigningIn by remember(isAddAccountFlow) { mutableStateOf(false) }
     
     // AppAuth activity result launcher for Vipps OAuth
     val vippsAuthLauncher = rememberLauncherForActivityResult(
@@ -85,9 +90,19 @@ fun LoginScreen(
         viewModel.handleVippsAuthResult(result.data)
     }
 
+    // If a previous add-account attempt was interrupted, recover from stale signing state.
+    LaunchedEffect(isAddAccountFlow) {
+        if (isAddAccountFlow) {
+            viewModel.resetStaleAddAccountState()
+        }
+    }
+
     // Auto-trigger provider sign-in for add account mode
     LaunchedEffect(autoTriggerProvider) {
         if (autoTriggerProvider != null && activity != null && uiState !is LoginUiState.SigningIn) {
+            if (isAddAccountFlow) {
+                hasStartedAddAccountAttempt = true
+            }
             when (autoTriggerProvider) {
                 "microsoft" -> viewModel.signInWithMicrosoft(activity)
                 "vipps" -> viewModel.signInWithVipps(activity) { intent, _ ->
@@ -97,9 +112,39 @@ fun LoginScreen(
         }
     }
 
-    LaunchedEffect(isAuthenticated) {
-        if (isAuthenticated) {
+    LaunchedEffect(isAuthenticated, isAddAccountFlow) {
+        if (!isAddAccountFlow && isAuthenticated) {
             onLoginSuccess()
+        }
+    }
+
+    // Ignore stale Success from previously completed auth flows in the shared view model.
+    // Add-account should only complete after this screen has observed a real SigningIn state.
+    LaunchedEffect(uiState, isAddAccountFlow) {
+        if (isAddAccountFlow && uiState is LoginUiState.SigningIn) {
+            hasObservedAddAccountSigningIn = true
+        }
+    }
+
+    // In add-account mode, user may already be authenticated with another provider.
+    // Only close this screen when an attempt started here reaches SigningIn -> Success.
+    LaunchedEffect(uiState, isAddAccountFlow, hasStartedAddAccountAttempt, hasObservedAddAccountSigningIn) {
+        if (
+            isAddAccountFlow &&
+            hasStartedAddAccountAttempt &&
+            hasObservedAddAccountSigningIn &&
+            uiState is LoginUiState.Success
+        ) {
+            onLoginSuccess()
+        }
+    }
+
+    // Ensure interrupted add-account OAuth doesn't leave the shared LoginViewModel stuck.
+    DisposableEffect(isAddAccountFlow) {
+        onDispose {
+            if (isAddAccountFlow && viewModel.hasPendingVippsAuth()) {
+                viewModel.cancelPendingVippsAuth()
+            }
         }
     }
 
@@ -186,9 +231,15 @@ fun LoginScreen(
             SignInButtons(
                 uiState = uiState,
                 onMicrosoftSignIn = {
+                    if (isAddAccountFlow) {
+                        hasStartedAddAccountAttempt = true
+                    }
                     activity?.let { viewModel.signInWithMicrosoft(it) }
                 },
                 onVippsSignIn = {
+                    if (isAddAccountFlow) {
+                        hasStartedAddAccountAttempt = true
+                    }
                     activity?.let { act ->
                         viewModel.signInWithVipps(act) { intent, _ ->
                             // Launch Vipps OAuth via AppAuth (handles web fallback automatically)

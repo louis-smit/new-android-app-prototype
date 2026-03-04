@@ -136,7 +136,7 @@ fun AccountRowItem(
     onRemove: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val userInfo = session.tokens.userInfo
+    val userInfo = session.userInfo
 
     Row(
         modifier = modifier
@@ -209,7 +209,7 @@ fun AccountHeaderCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val userInfo = session.tokens.userInfo
+    val userInfo = session.userInfo
 
     Card(
         onClick = onClick,
@@ -303,7 +303,7 @@ fun AccountAvatarButton(
     ) {
         if (session != null) {
             AvatarView(
-                initials = session.tokens.userInfo?.initials ?: "??",
+                initials = session.userInfo?.initials ?: "??",
                 provider = session.provider,
                 size = size
             )
@@ -330,13 +330,13 @@ private fun AccountAvatarButtonPreview() {
         tokens = AuthTokens(
             accessToken = "token",
             refreshToken = "refresh",
-            expiresAtMillis = System.currentTimeMillis() + 3600000,
-            userInfo = UserInfo(
-                displayName = "John Doe",
-                email = "john.doe@company.com",
-                givenName = "John",
-                familyName = "Doe"
-            )
+            expiresAtMillis = System.currentTimeMillis() + 3600000
+        ),
+        userInfo = UserInfo(
+            displayName = "John Doe",
+            email = "john.doe@company.com",
+            givenName = "John",
+            familyName = "Doe"
         )
     )
 
@@ -384,13 +384,13 @@ private fun AccountRowItemPreview() {
         tokens = AuthTokens(
             accessToken = "token",
             refreshToken = "refresh",
-            expiresAtMillis = System.currentTimeMillis() + 3600000,
-            userInfo = UserInfo(
-                displayName = "John Doe",
-                email = "john.doe@company.com",
-                givenName = "John",
-                familyName = "Doe"
-            )
+            expiresAtMillis = System.currentTimeMillis() + 3600000
+        ),
+        userInfo = UserInfo(
+            displayName = "John Doe",
+            email = "john.doe@company.com",
+            givenName = "John",
+            familyName = "Doe"
         )
     )
 
@@ -426,13 +426,13 @@ private fun AccountHeaderCardPreview() {
         tokens = AuthTokens(
             accessToken = "token",
             refreshToken = "refresh",
-            expiresAtMillis = System.currentTimeMillis() + 3600000,
-            userInfo = UserInfo(
-                displayName = "John Doe",
-                email = "john.doe@company.com",
-                givenName = "John",
-                familyName = "Doe"
-            )
+            expiresAtMillis = System.currentTimeMillis() + 3600000
+        ),
+        userInfo = UserInfo(
+            displayName = "John Doe",
+            email = "john.doe@company.com",
+            givenName = "John",
+            familyName = "Doe"
         )
     )
 

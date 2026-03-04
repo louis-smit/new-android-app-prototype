@@ -32,6 +32,7 @@ import no.solver.solverappdemo.core.config.AuthConfiguration
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
 import no.solver.solverappdemo.core.storage.TokenStorage
+import no.solver.solverappdemo.features.auth.models.AuthResult
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.UserInfo
 import java.net.HttpURLConnection
@@ -78,7 +79,7 @@ class MicrosoftAuthService @Inject constructor(
         }
     }
 
-    suspend fun signIn(activity: Activity): AuthTokens {
+    suspend fun signIn(activity: Activity): AuthResult {
         val app = msalApp ?: throw IllegalStateException("MSAL not initialized. Call initialize() first.")
         
         // Use ONLY the API scope - OIDC scopes (openid, profile, etc.) cause "scopes declined" error
@@ -93,9 +94,9 @@ class MicrosoftAuthService @Inject constructor(
                 .withCallback(object : AuthenticationCallback {
                     override fun onSuccess(authenticationResult: IAuthenticationResult) {
                         Log.d(TAG, "Sign in successful")
-                        val tokens = authResultToTokens(authenticationResult)
-                        saveTokens(tokens)
-                        continuation.resume(tokens)
+                        val result = authResultToAuthResult(authenticationResult)
+                        saveTokens(result.tokens)
+                        continuation.resume(result)
                     }
 
                     override fun onError(exception: MsalException) {
@@ -155,9 +156,9 @@ class MicrosoftAuthService @Inject constructor(
                     .withCallback(object : AuthenticationCallback {
                         override fun onSuccess(authenticationResult: IAuthenticationResult) {
                             Log.d(TAG, "✅ Silent token acquisition successful")
-                            val tokens = authResultToTokens(authenticationResult)
-                            saveTokens(tokens)
-                            continuation.resume(tokens)
+                            val result = authResultToAuthResult(authenticationResult)
+                            saveTokens(result.tokens)
+                            continuation.resume(result.tokens)
                         }
 
                         override fun onError(exception: MsalException) {
@@ -219,18 +220,18 @@ class MicrosoftAuthService @Inject constructor(
         return tokenStorage.hasValidToken() || (msalApp?.accounts?.isNotEmpty() == true)
     }
 
-    private fun authResultToTokens(result: IAuthenticationResult): AuthTokens {
+    private fun authResultToAuthResult(result: IAuthenticationResult): AuthResult {
         val userInfo = parseUserInfoFromToken(result.accessToken)
 
-        return AuthTokens(
+        val tokens = AuthTokens(
             accessToken = result.accessToken,
             refreshToken = null, // MSAL handles refresh internally
             expiresAtMillis = result.expiresOn.time,
             tokenType = "Bearer",
             scope = result.scope.joinToString(" "),
-            userId = result.account.id,
-            userInfo = userInfo
+            userId = result.account.id
         )
+        return AuthResult(tokens = tokens, userInfo = userInfo)
     }
 
     private fun parseUserInfoFromToken(accessToken: String): UserInfo? {
@@ -264,7 +265,7 @@ class MicrosoftAuthService @Inject constructor(
         tokenStorage.saveTokenExpiry(tokens.expiresAtMillis)
     }
 
-    suspend fun registerAndFetchUserId(tokens: AuthTokens, environment: AuthEnvironment): String {
+    suspend fun registerAndFetchUserId(tokens: AuthTokens, userInfo: UserInfo?, environment: AuthEnvironment): String {
         val registrationConfig = APIConfiguration.current(
             environment = environment,
             mode = AppEnvironment.current,
@@ -274,7 +275,7 @@ class MicrosoftAuthService @Inject constructor(
 
         val masterToken = fetchMasterToken(registrationBaseUrl)
 
-        registerUser(registrationBaseUrl, masterToken, tokens)
+        registerUser(registrationBaseUrl, masterToken, tokens, userInfo)
 
         val msApiConfig = APIConfiguration.current(
             environment = environment,
@@ -321,7 +322,7 @@ class MicrosoftAuthService @Inject constructor(
         }
     }
 
-    private suspend fun registerUser(baseUrl: String, masterToken: String, tokens: AuthTokens) {
+    private suspend fun registerUser(baseUrl: String, masterToken: String, tokens: AuthTokens, userInfo: UserInfo?) {
         Log.d(TAG, "📝 Registering MS user on Solver (fire-and-forget)")
 
         withContext(Dispatchers.IO) {
@@ -337,13 +338,13 @@ class MicrosoftAuthService @Inject constructor(
                 val deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}"
                 val body = """
                     {
-                        "sid": "${tokens.userInfo?.oid ?: ""}",
+                        "sid": "${userInfo?.oid ?: ""}",
                         "userId": 0,
                         "pin": "",
                         "userTypeId": 1,
                         "active": false,
-                        "displayName": "${tokens.userInfo?.displayName ?: ""}",
-                        "userName": "${tokens.userInfo?.email ?: ""}",
+                        "displayName": "${userInfo?.displayName ?: ""}",
+                        "userName": "${userInfo?.email ?: ""}",
                         "password": "",
                         "appId": "",
                         "deviceModel": "$deviceModel"

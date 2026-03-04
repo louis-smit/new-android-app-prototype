@@ -35,8 +35,6 @@ data class AccountsUiState(
 }
 
 sealed class AccountsEvent {
-    data object NavigateToMicrosoftLogin : AccountsEvent()
-    data object NavigateToVippsLogin : AccountsEvent()
     data object NavigateToMobileLogin : AccountsEvent()
     data object AllAccountsRemoved : AccountsEvent()
 }
@@ -120,20 +118,6 @@ class AccountsViewModel @Inject constructor(
 
     fun onHideAddAccount() {
         _uiState.update { it.copy(showAddAccount = false) }
-    }
-
-    fun onAddMicrosoftAccount() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(showAddAccount = false) }
-            _events.emit(AccountsEvent.NavigateToMicrosoftLogin)
-        }
-    }
-
-    fun onAddVippsAccount() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(showAddAccount = false) }
-            _events.emit(AccountsEvent.NavigateToVippsLogin)
-        }
     }
 
     fun onAddMobileAccount() {

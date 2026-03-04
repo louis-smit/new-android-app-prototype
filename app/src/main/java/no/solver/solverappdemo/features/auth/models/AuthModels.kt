@@ -11,8 +11,7 @@ data class AuthTokens(
     val expiresAtMillis: Long,
     val tokenType: String = "Bearer",
     val scope: String? = null,
-    val userId: String? = null,
-    val userInfo: UserInfo? = null
+    val userId: String? = null
 ) {
     val isExpired: Boolean
         get() = System.currentTimeMillis() >= expiresAtMillis
@@ -23,6 +22,16 @@ data class AuthTokens(
     val secondsUntilExpiry: Long
         get() = maxOf(0, (expiresAtMillis - System.currentTimeMillis()) / 1000)
 }
+
+/**
+ * Bundles tokens + userInfo from an auth flow.
+ * Mirrors iOS where tokens and userInfo are returned separately
+ * and stored independently on the account/session.
+ */
+data class AuthResult(
+    val tokens: AuthTokens,
+    val userInfo: UserInfo?
+)
 
 @Serializable
 data class UserInfo(
@@ -64,11 +73,18 @@ data class Session(
     val provider: AuthProvider,
     val environment: AuthEnvironment,
     val tokens: AuthTokens,
+    val userInfo: UserInfo? = null,
     val isActive: Boolean = true
 ) {
     val displayName: String
-        get() = tokens.userInfo?.effectiveDisplayName ?: "Unknown"
+        get() = userInfo?.effectiveDisplayName ?: "Unknown"
 
     val email: String?
-        get() = tokens.userInfo?.email
+        get() = userInfo?.email
+
+    /**
+     * Create updated session with new tokens, preserving userInfo.
+     * Mirrors iOS StoredAccount.withUpdatedTokens().
+     */
+    fun withUpdatedTokens(newTokens: AuthTokens): Session = copy(tokens = newTokens)
 }

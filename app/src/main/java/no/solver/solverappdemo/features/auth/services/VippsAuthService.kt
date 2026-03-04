@@ -30,6 +30,7 @@ import no.solver.solverappdemo.core.config.APIConfiguration
 import no.solver.solverappdemo.core.config.AppEnvironment
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
+import no.solver.solverappdemo.features.auth.models.AuthResult
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.UserInfo
 import java.net.HttpURLConnection
@@ -64,6 +65,8 @@ class VippsAuthService @Inject constructor(
 ) {
     companion object {
         private const val TAG = "VippsAuthService"
+        private const val CONNECT_TIMEOUT_MS = 15000
+        private const val READ_TIMEOUT_MS = 30000
         
         // Vipps OAuth endpoints (same as iOS)
         private const val VIPPS_AUTH_URL = "https://api.vipps.no/access-management-1.0/access/oauth2/auth"
@@ -97,6 +100,12 @@ class VippsAuthService @Inject constructor(
     
     // Pending auth continuation for when activity result arrives
     private var pendingAuthContinuation: ((Result<String>) -> Unit)? = null
+
+    private fun HttpURLConnection.applyNetworkTimeouts(): HttpURLConnection {
+        connectTimeout = CONNECT_TIMEOUT_MS
+        readTimeout = READ_TIMEOUT_MS
+        return this
+    }
     
     /**
      * Initialize the service with the given environment
@@ -179,7 +188,7 @@ class VippsAuthService @Inject constructor(
     suspend fun signIn(
         activity: Activity,
         launchForResult: (Intent, Int) -> Unit
-    ): AuthTokens {
+    ): AuthResult {
         Log.d(TAG, "Starting Vipps authentication flow with AppAuth")
         
         // Step 1: Get authorization code via AppAuth OAuth flow
@@ -211,10 +220,10 @@ class VippsAuthService @Inject constructor(
         val vippsUserInfo = getVippsUserInfo(vippsToken.accessToken)
         
         // Step 4-6: Get Solver tokens (master token -> register -> user token)
-        val solverTokens = getSolverTokens(vippsUserInfo)
+        val result = getSolverTokens(vippsUserInfo)
         
         Log.i(TAG, "✅ Vipps authentication successful")
-        return solverTokens
+        return result
     }
     
     /**
@@ -276,6 +285,7 @@ class VippsAuthService @Inject constructor(
             try {
                 val url = URL("${getApiBaseUrl()}/api/token/refresh")
                 val connection = (url.openConnection() as HttpURLConnection).apply {
+                    applyNetworkTimeouts()
                     requestMethod = "POST"
                     setRequestProperty("Content-Type", "application/json")
                     setRequestProperty("Accept", "application/json")
@@ -317,6 +327,7 @@ class VippsAuthService @Inject constructor(
         return withContext(Dispatchers.IO) {
             val url = URL(VIPPS_TOKEN_URL)
             val connection = (url.openConnection() as HttpURLConnection).apply {
+                applyNetworkTimeouts()
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
                 setRequestProperty("Accept", "application/json")
@@ -357,6 +368,7 @@ class VippsAuthService @Inject constructor(
         return withContext(Dispatchers.IO) {
             val url = URL(VIPPS_USERINFO_URL)
             val connection = (url.openConnection() as HttpURLConnection).apply {
+                applyNetworkTimeouts()
                 requestMethod = "GET"
                 setRequestProperty("Authorization", "Bearer $accessToken")
                 setRequestProperty("Content-Type", "application/json")
@@ -375,7 +387,7 @@ class VippsAuthService @Inject constructor(
     /**
      * Steps 4-6: Get Solver tokens (Master -> Register -> User Token)
      */
-    private suspend fun getSolverTokens(vippsUser: VippsUserInfo): AuthTokens {
+    private suspend fun getSolverTokens(vippsUser: VippsUserInfo): AuthResult {
         val baseUrl = getApiBaseUrl()
         Log.d(TAG, "📍 Using API endpoint: $baseUrl")
         
@@ -389,7 +401,6 @@ class VippsAuthService @Inject constructor(
         // 4c: Get user token
         val userTokenResponse = fetchUserToken(baseUrl, vippsUser.sub, password)
         
-        // Construct AuthTokens
         val userInfo = UserInfo(
             displayName = vippsUser.name,
             email = vippsUser.email,
@@ -399,14 +410,14 @@ class VippsAuthService @Inject constructor(
         
         val expiresAtMillis = System.currentTimeMillis() + (userTokenResponse.expiresIn * 1000L)
         
-        return AuthTokens(
+        val tokens = AuthTokens(
             accessToken = userTokenResponse.accessToken,
             refreshToken = userTokenResponse.refreshToken,
             expiresAtMillis = expiresAtMillis,
             tokenType = userTokenResponse.tokenType ?: "Bearer",
-            userId = solverUserId.toString(),
-            userInfo = userInfo
+            userId = solverUserId.toString()
         )
+        return AuthResult(tokens = tokens, userInfo = userInfo)
     }
     
     /**
@@ -418,6 +429,7 @@ class VippsAuthService @Inject constructor(
         return withContext(Dispatchers.IO) {
             val url = URL("$baseUrl/api/Token")
             val connection = (url.openConnection() as HttpURLConnection).apply {
+                applyNetworkTimeouts()
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Accept", "application/json")
@@ -461,6 +473,7 @@ class VippsAuthService @Inject constructor(
         return withContext(Dispatchers.IO) {
             val url = URL("$baseUrl/api/User/Register")
             val connection = (url.openConnection() as HttpURLConnection).apply {
+                applyNetworkTimeouts()
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Authorization", "Bearer $masterToken")
@@ -516,6 +529,7 @@ class VippsAuthService @Inject constructor(
         return withContext(Dispatchers.IO) {
             val url = URL("$baseUrl/api/Token")
             val connection = (url.openConnection() as HttpURLConnection).apply {
+                applyNetworkTimeouts()
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json")
                 doOutput = true

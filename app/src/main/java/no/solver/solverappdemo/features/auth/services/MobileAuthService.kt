@@ -15,6 +15,7 @@ import no.solver.solverappdemo.core.config.APIConfiguration
 import no.solver.solverappdemo.core.config.AppEnvironment
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
+import no.solver.solverappdemo.features.auth.models.AuthResult
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.UserInfo
 import java.net.HttpURLConnection
@@ -105,7 +106,7 @@ class MobileAuthService @Inject constructor(
      * Step 3-5: Confirm mobile user with PIN.
      * Logs in with SID/password, confirms PIN, fetches profile, returns session.
      */
-    suspend fun confirmMobileUser(input: MobileConfirmationInput): AuthTokens {
+    suspend fun confirmMobileUser(input: MobileConfirmationInput): AuthResult {
         val baseUrl = getApiBaseUrl()
         Log.d(TAG, "🔐 Confirming mobile user PIN")
 
@@ -122,19 +123,22 @@ class MobileAuthService @Inject constructor(
 
         val expiresAtMillis = System.currentTimeMillis() + (tokens.expiresIn * 1000L)
 
-        return AuthTokens(
+        val userInfo = UserInfo(
+            displayName = userProfile.displayName,
+            email = userProfile.email,
+            userName = userProfile.userName,
+            oid = userProfile.oid ?: input.sid
+        )
+
+        val authTokens = AuthTokens(
             accessToken = tokens.accessToken,
             refreshToken = tokens.refreshToken,
             expiresAtMillis = expiresAtMillis,
             tokenType = "Bearer",
-            userId = userProfile.userId.toString(),
-            userInfo = UserInfo(
-                displayName = userProfile.displayName,
-                email = userProfile.email,
-                userName = userProfile.userName,
-                oid = userProfile.oid ?: input.sid
-            )
+            userId = userProfile.userId.toString()
         )
+
+        return AuthResult(tokens = authTokens, userInfo = userInfo)
     }
 
     /**

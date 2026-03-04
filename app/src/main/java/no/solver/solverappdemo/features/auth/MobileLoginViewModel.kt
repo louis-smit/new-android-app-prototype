@@ -194,13 +194,14 @@ class MobileLoginViewModel @Inject constructor(
 
                 Log.d(TAG, "Confirming PIN for user")
 
-                val tokens = mobileAuthService.confirmMobileUser(input)
+                val result = mobileAuthService.confirmMobileUser(input)
 
                 // Create session
                 sessionManager.createSession(
                     provider = AuthProvider.MOBILE,
                     environment = environment,
-                    tokens = tokens
+                    tokens = result.tokens,
+                    userInfo = result.userInfo
                 )
 
                 Log.i(TAG, "✅ Mobile login successful")

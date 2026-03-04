@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.SolverApp" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.SolverApp.Base" parent="android:Theme.Material.Light.NoActionBar" />
 
-    <style name="Theme.SolverApp.Transparent" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- Default app theme. API 31+ adds system splash config in values-v31. -->
+    <style name="Theme.SolverApp" parent="Theme.SolverApp.Base" />
+
+    <style name="Theme.SolverApp.Transparent" parent="Theme.SolverApp.Base">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>

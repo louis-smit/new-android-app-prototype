@@ -97,15 +97,16 @@ class LoginViewModel @Inject constructor(
                 val environment = sessionManager.getAuthEnvironment()
                 microsoftAuthService.initialize(environment)
                 
-                val tokens = microsoftAuthService.signIn(activity)
+                val result = microsoftAuthService.signIn(activity)
 
-                val realUserId = microsoftAuthService.registerAndFetchUserId(tokens, environment)
-                val tokensWithUserId = tokens.copy(userId = realUserId)
+                val realUserId = microsoftAuthService.registerAndFetchUserId(result.tokens, result.userInfo, environment)
+                val tokensWithUserId = result.tokens.copy(userId = realUserId)
 
                 sessionManager.createSession(
                     provider = AuthProvider.MICROSOFT,
                     environment = environment,
-                    tokens = tokensWithUserId
+                    tokens = tokensWithUserId,
+                    userInfo = result.userInfo
                 )
 
                 Log.d(TAG, "Microsoft sign-in successful")
@@ -137,12 +138,13 @@ class LoginViewModel @Inject constructor(
                 val environment = sessionManager.getAuthEnvironment()
                 vippsAuthService.initialize(environment)
 
-                val tokens = vippsAuthService.signIn(activity, launchForResult)
+                val result = vippsAuthService.signIn(activity, launchForResult)
 
                 sessionManager.createSession(
                     provider = AuthProvider.VIPPS,
                     environment = environment,
-                    tokens = tokens
+                    tokens = result.tokens,
+                    userInfo = result.userInfo
                 )
 
                 Log.d(TAG, "Vipps sign-in successful")
@@ -178,6 +180,9 @@ class LoginViewModel @Inject constructor(
      */
     fun cancelPendingVippsAuth() {
         vippsAuthService.cancelPendingAuth()
+        if (_uiState.value is LoginUiState.SigningIn) {
+            _uiState.value = LoginUiState.Idle
+        }
     }
     
     /**
@@ -193,6 +198,17 @@ class LoginViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = LoginUiState.Idle
+    }
+
+    /**
+     * Recover from stale add-account state left behind by an interrupted OAuth flow.
+     */
+    fun resetStaleAddAccountState() {
+        val currentState = _uiState.value
+        if (currentState is LoginUiState.SigningIn && currentState.provider == AuthProvider.VIPPS && !vippsAuthService.hasPendingAuth()) {
+            Log.w(TAG, "Resetting stale Vipps signing state (no pending OAuth continuation)")
+            _uiState.value = LoginUiState.Idle
+        }
     }
 
     /**

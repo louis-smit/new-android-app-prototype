@@ -56,7 +56,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.deeplink.DeepLinkViewModel
 import no.solver.solverappdemo.data.models.SolverObject
@@ -80,7 +79,6 @@ import no.solver.solverappdemo.ui.components.PaymentMethodSheetContent
 import no.solver.solverappdemo.ui.components.StatusBottomSheetContent
 import no.solver.solverappdemo.ui.components.SubscriptionOptionsSheetContent
 
-private const val SPLASH_DELAY_MS = 500L
 private const val TRANSITION_DURATION_MS = 300
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,32 +89,31 @@ fun AppNavHost(
     deepLinkViewModel: DeepLinkViewModel = hiltViewModel()
 ) {
     val isAuthenticated by loginViewModel.isAuthenticated.collectAsState()
-    var isInitialized by rememberSaveable { mutableStateOf(false) }
     
     // Deep link state
     val deepLinkState by deepLinkViewModel.uiState.collectAsState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(Unit) {
-        delay(SPLASH_DELAY_MS)
-        isInitialized = true
-    }
+    // Reactive navigation based on auth state (like iOS).
+    // With system launch splash on Android 12+, we can route immediately.
+    LaunchedEffect(isAuthenticated) {
+        val currentRoute = navController.currentDestination?.route
+        val isAddAccountLogin = currentRoute?.contains("AddAccountLogin") == true
+        val isOnAuthScreen = !isAddAccountLogin && (
+            currentRoute?.contains("Login") == true ||
+            currentRoute?.contains("MobileLogin") == true ||
+            currentRoute?.contains("Splash") == true
+            )
 
-    // Reactive navigation based on auth state (like iOS)
-    // When isAuthenticated changes AFTER initialization, navigate accordingly
-    LaunchedEffect(isAuthenticated, isInitialized) {
-        if (isInitialized) {
-            val currentRoute = navController.currentDestination?.route
-            val isOnAuthScreen = currentRoute?.contains("Login") == true || 
-                                 currentRoute?.contains("MobileLogin") == true ||
-                                 currentRoute?.contains("Splash") == true
-            
-            if (!isAuthenticated && !isOnAuthScreen) {
-                // User signed out while on a protected screen → go to login
-                navController.navigate(NavRoute.Login) {
-                    popUpTo(0) { inclusive = true }
-                }
+        if (isAuthenticated && isOnAuthScreen) {
+            navController.navigate(NavRoute.Main) {
+                popUpTo(0) { inclusive = true }
+            }
+        } else if (!isAuthenticated && !isOnAuthScreen) {
+            // User signed out while on a protected screen → go to login
+            navController.navigate(NavRoute.Login) {
+                popUpTo(0) { inclusive = true }
             }
         }
     }
@@ -133,7 +130,7 @@ fun AppNavHost(
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
         navController = navController,
-        startDestination = NavRoute.Splash,
+        startDestination = NavRoute.Login,
         enterTransition = {
             fadeIn(animationSpec = tween(TRANSITION_DURATION_MS))
         },
@@ -141,24 +138,6 @@ fun AppNavHost(
             fadeOut(animationSpec = tween(TRANSITION_DURATION_MS))
         }
     ) {
-        composable<NavRoute.Splash> {
-            SplashScreen()
-
-            LaunchedEffect(isInitialized) {
-                if (isInitialized) {
-                    if (isAuthenticated) {
-                        navController.navigate(NavRoute.Main) {
-                            popUpTo(NavRoute.Splash) { inclusive = true }
-                        }
-                    } else {
-                        navController.navigate(NavRoute.Login) {
-                            popUpTo(NavRoute.Splash) { inclusive = true }
-                        }
-                    }
-                }
-            }
-        }
-
         composable<NavRoute.Login>(
             enterTransition = {
                 slideIntoContainer(
@@ -226,12 +205,6 @@ fun AppNavHost(
                         MoreItem.MASTERLOCK_DEMO -> navController.navigate(NavRoute.MasterlockDemo)
                     }
                 },
-                onNavigateToMicrosoftLogin = {
-                    navController.navigate(NavRoute.AddAccountLogin("microsoft"))
-                },
-                onNavigateToVippsLogin = {
-                    navController.navigate(NavRoute.AddAccountLogin("vipps"))
-                },
                 onNavigateToMobileLogin = {
                     navController.navigate(NavRoute.AddAccountLogin("mobile"))
                 }
@@ -275,7 +248,8 @@ fun AppNavHost(
                         onMobileSignIn = {
                             navController.navigate(NavRoute.MobileLogin)
                         },
-                        autoTriggerProvider = route.provider
+                        autoTriggerProvider = route.provider,
+                        isAddAccountFlow = true
                     )
                 }
             }
@@ -645,8 +619,6 @@ fun MainScreen(
     onObjectClick: (SolverObject) -> Unit = {},
     onSignOut: () -> Unit = {},
     onNavigateToMoreItem: (MoreItem) -> Unit = {},
-    onNavigateToMicrosoftLogin: () -> Unit = {},
-    onNavigateToVippsLogin: () -> Unit = {},
     onNavigateToMobileLogin: () -> Unit = {}
 ) {
     var currentDestination by rememberSaveable { mutableStateOf(MainDestination.OBJECTS) }
@@ -659,14 +631,6 @@ fun MainScreen(
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ) {
             AccountsScreen(
-                onNavigateToMicrosoftLogin = {
-                    showAccountModal = false
-                    onNavigateToMicrosoftLogin()
-                },
-                onNavigateToVippsLogin = {
-                    showAccountModal = false
-                    onNavigateToVippsLogin()
-                },
                 onNavigateToMobileLogin = {
                     showAccountModal = false
                     onNavigateToMobileLogin()
@@ -674,6 +638,9 @@ fun MainScreen(
                 onAllAccountsRemoved = {
                     showAccountModal = false
                     onSignOut()
+                },
+                onDone = {
+                    showAccountModal = false
                 }
             )
         }
@@ -722,5 +689,3 @@ fun MainScreen(
         }
     }
 }
-
-

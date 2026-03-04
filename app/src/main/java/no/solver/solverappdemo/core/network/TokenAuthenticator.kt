@@ -155,8 +155,9 @@ class TokenAuthenticator @Inject constructor(
                 tokens.refreshToken?.let { tokenStorage.saveRefreshToken(it) }
                 tokenStorage.saveTokenExpiry(tokens.expiresAtMillis)
                 
-                // Update session with new tokens
-                val updatedSession = session.copy(tokens = tokens)
+                // Update session with new tokens, preserving userInfo
+                // (mirrors iOS StoredAccount.withUpdatedTokens)
+                val updatedSession = session.withUpdatedTokens(tokens)
                 sessionManager.updateSession(updatedSession)
                 
                 tokens.accessToken

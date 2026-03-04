@@ -34,7 +34,7 @@ fun SplashScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Image(
-                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                painter = painterResource(id = R.drawable.solver_logo),
                 contentDescription = "Solver Logo",
                 modifier = Modifier.size(120.dp)
             )

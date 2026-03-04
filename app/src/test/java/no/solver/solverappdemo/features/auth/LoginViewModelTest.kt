@@ -10,6 +10,7 @@ import kotlinx.coroutines.test.runTest
 import no.solver.solverappdemo.MainDispatcherRule
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
+import no.solver.solverappdemo.features.auth.models.AuthResult
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.Session
 import no.solver.solverappdemo.features.auth.models.UserInfo
@@ -73,10 +74,13 @@ class LoginViewModelTest {
     fun `signInWithMicrosoft shows Success on successful auth`() = runTest {
         val activity = mockk<android.app.Activity>(relaxed = true)
         val tokens = createTestTokens()
+        val userInfo = UserInfo(displayName = "Test User", email = "test@example.com")
+        val authResult = AuthResult(tokens = tokens, userInfo = userInfo)
         
         coEvery { sessionManager.getAuthEnvironment() } returns AuthEnvironment.SOLVER
-        coEvery { microsoftAuthService.signIn(any()) } returns tokens
-        coEvery { sessionManager.createSession(any(), any(), any()) } returns mockk()
+        coEvery { microsoftAuthService.signIn(any()) } returns authResult
+        coEvery { microsoftAuthService.registerAndFetchUserId(any(), any(), any()) } returns "test-user-id"
+        coEvery { sessionManager.createSession(any(), any(), any(), any()) } returns mockk()
 
         val viewModel = LoginViewModel(microsoftAuthService, sessionManager)
         viewModel.signInWithMicrosoft(activity)
@@ -146,6 +150,10 @@ class LoginViewModelTest {
         provider = AuthProvider.MICROSOFT,
         environment = AuthEnvironment.SOLVER,
         tokens = createTestTokens(),
+        userInfo = UserInfo(
+            displayName = "Test User",
+            email = "test@example.com"
+        ),
         isActive = true
     )
 
@@ -155,10 +163,6 @@ class LoginViewModelTest {
         expiresAtMillis = System.currentTimeMillis() + 3600000,
         tokenType = "Bearer",
         scope = "openid profile email",
-        userId = "test-user-id",
-        userInfo = UserInfo(
-            displayName = "Test User",
-            email = "test@example.com"
-        )
+        userId = "test-user-id"
     )
 }
