@@ -174,15 +174,25 @@ class ObjectsViewModel @Inject constructor(
                 val currentSessionId = session?.id
                 // Only reload if session actually changed (not on initial load)
                 if (previousSessionId != null && currentSessionId != previousSessionId) {
-                    Log.d(TAG, "Account switched, reloading objects")
-                    // Reset simulation state
-                    _isSimulating = false
-                    _realObjects = emptyList()
-                    // Reset state and reload for the new account
-                    _allObjects.value = emptyList()
-                    _labelFilters.value = emptyList()  // Reset label filters for new account
-                    loadObjects()
-                    loadFavourites()
+                    if (currentSessionId == null) {
+                        Log.d(TAG, "Session cleared, skipping object reload during auth transition")
+                        _isSimulating = false
+                        _realObjects = emptyList()
+                        _allObjects.value = emptyList()
+                        _labelFilters.value = emptyList()
+                        _lastSyncedAt.value = null
+                        _uiState.value = ObjectsUiState.Loading
+                    } else {
+                        Log.d(TAG, "Account switched, reloading objects")
+                        // Reset simulation state
+                        _isSimulating = false
+                        _realObjects = emptyList()
+                        // Reset state and reload for the new account
+                        _allObjects.value = emptyList()
+                        _labelFilters.value = emptyList()  // Reset label filters for new account
+                        loadObjects()
+                        loadFavourites()
+                    }
                 }
                 previousSessionId = currentSessionId
             }
