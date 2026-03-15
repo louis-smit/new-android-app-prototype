@@ -14,12 +14,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import no.solver.solverappdemo.core.config.APIConfiguration
+import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.DebugConfigurationManager
 import no.solver.solverappdemo.core.network.ApiResult
 import no.solver.solverappdemo.core.storage.FavouritesStore
 import no.solver.solverappdemo.data.models.Command
 import no.solver.solverappdemo.data.models.ExecuteResponse
 import no.solver.solverappdemo.data.models.SolverObject
+import no.solver.solverappdemo.data.models.isBookPlanyoCommand
 import no.solver.solverappdemo.data.repositories.ObjectsRepository
 import no.solver.solverappdemo.features.auth.services.SessionManager
 import no.solver.solverappdemo.features.objects.middleware.DanalockMiddleware
@@ -99,6 +101,9 @@ class ObjectDetailViewModel @Inject constructor(
 
     private val _commandError = MutableStateFlow<String?>(null)
     val commandError: StateFlow<String?> = _commandError.asStateFlow()
+
+    private val _bookingUrlToOpen = MutableStateFlow<String?>(null)
+    val bookingUrlToOpen: StateFlow<String?> = _bookingUrlToOpen.asStateFlow()
 
     // Input dialog state
     private val _showInputDialog = MutableStateFlow(false)
@@ -333,12 +338,56 @@ class ObjectDetailViewModel @Inject constructor(
     // MARK: - Command Execution
 
     fun handleCommand(command: Command) {
+        if (command.isBookPlanyoCommand) {
+            handleBookPlanyoCommand(command)
+            return
+        }
+
         if (command.requiresInput) {
             _pendingCommand.value = command
             _commandInput.value = ""
             _showInputDialog.value = true
         } else {
             executeCommand(command, input = null)
+        }
+    }
+
+    private fun handleBookPlanyoCommand(command: Command) {
+        viewModelScope.launch {
+            val obj = solverObject ?: run {
+                _commandError.value = "Booking is unavailable right now"
+                return@launch
+            }
+
+            Log.i(TAG, "Executing client-only booking command for object '${obj.name}'")
+            _executingCommandId.value = command.commandName
+            _commandError.value = null
+            _lastExecuteResponse.value = null
+            _middlewareMessage.value = null
+
+            when (val result = objectsRepository.createBookingSignedUrl(obj.id)) {
+                is ApiResult.Success -> {
+                    val session = sessionManager.getCurrentSession()
+                    val bookingBaseUrl = if (session != null) {
+                        APIConfiguration.current(
+                            environment = session.environment,
+                            provider = session.provider
+                        ).bookingBaseUrl
+                    } else {
+                        APIConfiguration.current(environment = AuthEnvironment.SOLVER).bookingBaseUrl
+                    }
+
+                    _bookingUrlToOpen.value = "$bookingBaseUrl/booking/${result.data}"
+                }
+
+                is ApiResult.Error -> {
+                    val message = result.exception.message ?: "Unknown error"
+                    Log.e(TAG, "Failed to create booking signed URL: $message")
+                    _commandError.value = "Failed to open booking: $message"
+                }
+            }
+
+            _executingCommandId.value = null
         }
     }
 
@@ -434,6 +483,10 @@ class ObjectDetailViewModel @Inject constructor(
 
     fun dismissCommandError() {
         _commandError.value = null
+    }
+
+    fun onBookingUrlOpened() {
+        _bookingUrlToOpen.value = null
     }
 
     // MARK: - Menu Actions

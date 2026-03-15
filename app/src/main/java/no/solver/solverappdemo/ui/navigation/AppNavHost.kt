@@ -1,5 +1,8 @@
 package no.solver.solverappdemo.ui.navigation
 
+import android.content.Intent
+import android.net.Uri
+
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -89,6 +92,7 @@ fun AppNavHost(
     deepLinkViewModel: DeepLinkViewModel = hiltViewModel()
 ) {
     val isAuthenticated by loginViewModel.isAuthenticated.collectAsState()
+    val context = LocalContext.current
     
     // Deep link state
     val deepLinkState by deepLinkViewModel.uiState.collectAsState()
@@ -123,6 +127,19 @@ fun AppNavHost(
         deepLinkState.error?.let { error ->
             snackbarHostState.showSnackbar(error)
             deepLinkViewModel.dismissError()
+        }
+    }
+
+    // Open booking URL for client-only booking command deep links
+    LaunchedEffect(deepLinkState.bookingUrlToOpen) {
+        deepLinkState.bookingUrlToOpen?.let { url ->
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            }.onFailure {
+                snackbarHostState.showSnackbar("Failed to open booking page")
+            }
+
+            deepLinkViewModel.onBookingUrlOpened()
         }
     }
 
@@ -677,7 +694,8 @@ fun MainScreen(
             }
             MainDestination.SCAN -> {
                 ScanScreen(
-                    deepLinkViewModel = deepLinkViewModel
+                    deepLinkViewModel = deepLinkViewModel,
+                    onScanSuccessNavigateHome = { currentDestination = MainDestination.OBJECTS }
                 )
             }
             MainDestination.MORE -> {

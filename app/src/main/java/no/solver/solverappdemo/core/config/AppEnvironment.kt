@@ -43,6 +43,7 @@ enum class AuthProvider(val displayName: String) {
 
 data class APIConfiguration(
     val baseURL: String,
+    val bookingBaseUrl: String = "https://book.solver.no",
     val timeoutSeconds: Long = 30
 ) {
     companion object {

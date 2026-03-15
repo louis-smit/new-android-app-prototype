@@ -129,4 +129,41 @@ class ObjectsRepository @Inject constructor(
             }
         }
     }
+
+    suspend fun createBookingSignedUrl(objectId: Int): ApiResult<String> {
+        return ApiResult.runCatching {
+            val session = sessionManager.getCurrentSession()
+                ?: throw ApiException.Unauthorized("No active session")
+
+            val apiService = apiClientManager.getApiService(
+                environment = session.environment,
+                provider = session.provider
+            )
+
+            val response = apiService.createBookingSignedUrl(objectId)
+
+            if (response.isSuccessful) {
+                val rawBody = response.body()?.string()
+                    ?: throw ApiException.Unknown("Empty booking signed URL response")
+
+                parseBookingGuid(rawBody)
+            } else {
+                throw ApiException.fromHttpCode(response.code(), response.message())
+            }
+        }
+    }
+
+    private fun parseBookingGuid(rawBody: String): String {
+        val guid = rawBody
+            .trim()
+            .removePrefix("\"")
+            .removeSuffix("\"")
+            .trim()
+
+        if (guid.isEmpty()) {
+            throw ApiException.Unknown("Invalid booking signed URL response")
+        }
+
+        return guid
+    }
 }

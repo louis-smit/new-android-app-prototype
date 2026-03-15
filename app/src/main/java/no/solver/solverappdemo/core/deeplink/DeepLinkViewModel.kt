@@ -12,11 +12,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import no.solver.solverappdemo.core.config.APIConfiguration
+import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.network.ApiResult
 import no.solver.solverappdemo.data.models.Command
 import no.solver.solverappdemo.data.models.ExecuteResponse
 import no.solver.solverappdemo.data.models.PaymentMethod
 import no.solver.solverappdemo.data.models.SolverObject
+import no.solver.solverappdemo.data.models.isBookPlanyoCommand
 import no.solver.solverappdemo.data.repositories.ObjectsRepository
 import no.solver.solverappdemo.data.repositories.TagRepository
 import no.solver.solverappdemo.features.auth.services.SessionManager
@@ -64,7 +67,9 @@ data class DeepLinkUiState(
     /** Payment callback state */
     val paymentCallbackMethod: PaymentMethod? = null,
     val paymentCallbackReference: String? = null,
-    val showPaymentCallback: Boolean = false
+    val showPaymentCallback: Boolean = false,
+    /** One-shot URL event for opening booking pages */
+    val bookingUrlToOpen: String? = null
 )
 
 /**
@@ -292,6 +297,39 @@ class DeepLinkViewModel @Inject constructor(
             val solverObject = (objectResult as ApiResult.Success).data
             Log.i(TAG, "✅ Fetched object: ${solverObject.name}")
 
+            if (command.isBookPlanyoCommand()) {
+                val bookingResult = tagRepository.createBookingSignedUrl(solverObject.id)
+
+                when (bookingResult) {
+                    is ApiResult.Success -> {
+                        val session = sessionManager.getCurrentSession()
+                        val bookingBaseUrl = if (session != null) {
+                            APIConfiguration.current(
+                                environment = session.environment,
+                                provider = session.provider
+                            ).bookingBaseUrl
+                        } else {
+                            APIConfiguration.current(environment = AuthEnvironment.SOLVER).bookingBaseUrl
+                        }
+
+                        _uiState.value = DeepLinkUiState(
+                            isExecuting = false,
+                            bookingUrlToOpen = "$bookingBaseUrl/booking/${bookingResult.data}"
+                        )
+                    }
+
+                    is ApiResult.Error -> {
+                        Log.e(TAG, "❌ Failed to create booking URL: ${bookingResult.exception.message}")
+                        _uiState.value = DeepLinkUiState(
+                            isExecuting = false,
+                            error = "Failed to open booking: ${bookingResult.exception.message}"
+                        )
+                    }
+                }
+
+                return@launch
+            }
+
             // 2. Execute command by tag
             val executeResult = tagRepository.executeCommandByTag(command, tag)
             if (executeResult is ApiResult.Error) {
@@ -374,5 +412,9 @@ class DeepLinkViewModel @Inject constructor(
             objectForSheet = null,
             responseForSheet = null
         )
+    }
+
+    fun onBookingUrlOpened() {
+        _uiState.value = _uiState.value.copy(bookingUrlToOpen = null)
     }
 }

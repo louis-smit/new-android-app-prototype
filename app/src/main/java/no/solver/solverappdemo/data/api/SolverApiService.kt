@@ -107,6 +107,11 @@ interface SolverApiService {
         @Path("command") command: String
     ): Response<ExecuteResponse>
 
+    @PUT("api/Booking/CreateSignedURL/{objectId}")
+    suspend fun createBookingSignedUrl(
+        @Path("objectId") objectId: Int
+    ): Response<ResponseBody>
+
     // ==================== PAYMENT ENDPOINTS ====================
 
     // Vipps payment initiation

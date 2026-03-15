@@ -71,6 +71,7 @@ private const val TAG = "ScanScreen"
 @Composable
 fun ScanScreen(
     deepLinkViewModel: DeepLinkViewModel,
+    onScanSuccessNavigateHome: () -> Unit = {},
     scanViewModel: ScanViewModel = hiltViewModel()
 ) {
     val uiState by scanViewModel.uiState.collectAsState()
@@ -100,6 +101,14 @@ fun ScanScreen(
 
     // Show "Scan Again" when scanner is paused AND deep link flow is fully done
     val showScanAgain = uiState.scannerState == ScannerState.PAUSED && !isBusy
+
+    // Successful scan flow completed: reset scanner and return user to Objects tab.
+    LaunchedEffect(showScanAgain) {
+        if (showScanAgain) {
+            scanViewModel.scanAgain()
+            onScanSuccessNavigateHome()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -151,14 +160,6 @@ fun ScanScreen(
                         )
                     }
 
-                    // "Scan Again" overlay after flow completes
-                    AnimatedVisibility(
-                        visible = showScanAgain,
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
-                        ScanAgainOverlay(onScanAgain = { scanViewModel.scanAgain() })
-                    }
                 }
 
                 else -> {
@@ -316,7 +317,7 @@ private fun PermissionContent(
             onClick = onRequestPermission,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Allow Camera Access")
+            Text("Continue")
         }
 
         Spacer(modifier = Modifier.height(8.dp))

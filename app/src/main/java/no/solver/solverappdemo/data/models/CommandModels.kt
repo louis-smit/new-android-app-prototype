@@ -18,6 +18,9 @@ data class Command(
     val commandName: String
         get() = native ?: ""
 
+    val normalizedCommandName: String
+        get() = commandName.trim().lowercase()
+
     val displayName: String
         get() = display ?: label ?: native ?: "Unknown"
 
@@ -42,7 +45,15 @@ data class Command(
             "" -> null
             else -> "terminal"
         }
+
+    val isBookPlanyoCommand: Boolean
+        get() = normalizedCommandName == "book_planyo"
+
+    val isClientOnlyCommand: Boolean
+        get() = normalizedCommandName in setOf("null", "object", "book_planyo")
 }
+
+fun String.isBookPlanyoCommand(): Boolean = trim().lowercase() == "book_planyo"
 
 @Serializable
 data class CommandLanguage(

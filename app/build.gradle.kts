@@ -15,7 +15,7 @@ android {
         applicationId = "no.solver.solverappdemo"
         minSdk = 24
         targetSdk = 35
-        versionCode = 19
+        versionCode = 22
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

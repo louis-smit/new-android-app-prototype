@@ -120,6 +120,7 @@ fun ObjectDetailScreen(
     val showInputDialog by viewModel.showInputDialog.collectAsState()
     val pendingCommand by viewModel.pendingCommand.collectAsState()
     val commandInput by viewModel.commandInput.collectAsState()
+    val bookingUrlToOpen by viewModel.bookingUrlToOpen.collectAsState()
     val showStatusSheet by viewModel.showStatusSheet.collectAsState()
     val statusSheetResponse by viewModel.statusSheetResponse.collectAsState()
     val showDetailsSheet by viewModel.showDetailsSheet.collectAsState()
@@ -238,6 +239,20 @@ fun ObjectDetailScreen(
         commandError?.let { error ->
             snackbarHostState.showSnackbar(error)
             viewModel.dismissCommandError()
+        }
+    }
+
+    // Open booking URL for client-only booking commands
+    LaunchedEffect(bookingUrlToOpen) {
+        bookingUrlToOpen?.let { url ->
+            runCatching {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                context.startActivity(intent)
+            }.onFailure {
+                snackbarHostState.showSnackbar("Failed to open booking page")
+            }
+
+            viewModel.onBookingUrlOpened()
         }
     }
 
@@ -930,6 +945,9 @@ private fun ObjectInfoCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             DetailRow(label = "Name", value = solverObject.name)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            DetailRow(label = "Object ID", value = solverObject.id.toString())
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             DetailRow(label = "Status", value = solverObject.status)

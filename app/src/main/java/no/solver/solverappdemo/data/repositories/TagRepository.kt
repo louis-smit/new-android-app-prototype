@@ -122,4 +122,39 @@ class TagRepository @Inject constructor(
             }
         }
     }
+
+    suspend fun createBookingSignedUrl(objectId: Int): ApiResult<String> {
+        Log.i(TAG, "Creating booking signed URL for object: $objectId")
+
+        return ApiResult.runCatching {
+            val session = sessionManager.getCurrentSession()
+                ?: throw ApiException.Unauthorized("No active session")
+
+            val apiService = apiClientManager.getApiService(
+                environment = session.environment,
+                provider = session.provider
+            )
+
+            val response = apiService.createBookingSignedUrl(objectId)
+
+            if (response.isSuccessful) {
+                val rawBody = response.body()?.string()
+                    ?: throw ApiException.Unknown("Empty booking signed URL response")
+
+                val guid = rawBody
+                    .trim()
+                    .removePrefix("\"")
+                    .removeSuffix("\"")
+                    .trim()
+
+                if (guid.isEmpty()) {
+                    throw ApiException.Unknown("Invalid booking signed URL response")
+                }
+
+                guid
+            } else {
+                throw ApiException.fromHttpCode(response.code(), response.message())
+            }
+        }
+    }
 }

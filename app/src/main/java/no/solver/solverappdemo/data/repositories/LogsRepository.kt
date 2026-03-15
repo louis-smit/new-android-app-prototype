@@ -5,7 +5,10 @@ import no.solver.solverappdemo.core.network.ApiResult
 import no.solver.solverappdemo.data.api.ApiClientManager
 import no.solver.solverappdemo.data.models.ObjectLog
 import no.solver.solverappdemo.features.auth.services.SessionManager
-import java.time.ZonedDateTime
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.time.format.DateTimeParseException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -78,13 +81,24 @@ class LogsRepository @Inject constructor(
     private fun sortLogs(logs: List<ObjectLog>): List<ObjectLog> {
         return logs.sortedByDescending { log ->
             log.createdAt?.let { dateString ->
-                try {
-                    val adjusted = if (!dateString.endsWith("Z")) dateString + "Z" else dateString
-                    ZonedDateTime.parse(adjusted)
-                } catch (e: DateTimeParseException) {
-                    null
-                }
+                parseBackendTimestamp(dateString)
             }
         }
+    }
+
+    private fun parseBackendTimestamp(dateString: String): Instant? {
+        return try {
+            if (dateString.hasExplicitOffset()) {
+                OffsetDateTime.parse(dateString).toInstant()
+            } else {
+                LocalDateTime.parse(dateString).toInstant(ZoneOffset.UTC)
+            }
+        } catch (e: DateTimeParseException) {
+            null
+        }
+    }
+
+    private fun String.hasExplicitOffset(): Boolean {
+        return endsWith("Z") || Regex("[+-]\\d{2}:?\\d{2}$").containsMatchIn(this)
     }
 }

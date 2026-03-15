@@ -78,6 +78,7 @@ fun CachedObjectEntity.Companion.fromDomainModel(obj: SolverObject, accountId: S
         online = obj.online,
         state = obj.state,
         tenantName = obj.tenantName,
+
         userAccess = obj.userAccess,
         hasSubscription = obj.hasSubscription,
         labelsJson = labelsJson,
