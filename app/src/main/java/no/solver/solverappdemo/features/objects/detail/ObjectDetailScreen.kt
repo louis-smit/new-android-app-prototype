@@ -117,6 +117,7 @@ fun ObjectDetailScreen(
     val lastExecuteResponse by viewModel.lastExecuteResponse.collectAsState()
     val middlewareMessage by viewModel.middlewareMessage.collectAsState()
     val commandError by viewModel.commandError.collectAsState()
+    val commandFeedback by viewModel.commandFeedback.collectAsState()
     val showInputDialog by viewModel.showInputDialog.collectAsState()
     val pendingCommand by viewModel.pendingCommand.collectAsState()
     val commandInput by viewModel.commandInput.collectAsState()
@@ -256,98 +257,113 @@ fun ObjectDetailScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = (uiState as? ObjectDetailUiState.Success)?.solverObject?.name ?: "Object",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = (uiState as? ObjectDetailUiState.Success)?.solverObject?.name ?: "Object",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh"
-                        )
-                    }
-                    Box {
-                        IconButton(onClick = { showOverflowMenu = true }) {
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
                             Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More options"
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
                             )
                         }
-                        val currentObject = (uiState as? ObjectDetailUiState.Success)?.solverObject
-                        DropdownMenu(
-                            expanded = showOverflowMenu,
-                            onDismissRequest = { showOverflowMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(if (isFavourite) "Remove from Favourites" else "Add to Favourites") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    viewModel.toggleFavourite()
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = if (isFavourite) Icons.Filled.Star else Icons.Outlined.Star,
-                                        contentDescription = null
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.refresh() }) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh"
+                            )
+                        }
+                        Box {
+                            IconButton(onClick = { showOverflowMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "More options"
+                                )
+                            }
+                            val currentObject = (uiState as? ObjectDetailUiState.Success)?.solverObject
+                            DropdownMenu(
+                                expanded = showOverflowMenu,
+                                onDismissRequest = { showOverflowMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(if (isFavourite) "Remove from Favourites" else "Add to Favourites") },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.toggleFavourite()
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = if (isFavourite) Icons.Filled.Star else Icons.Outlined.Star,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                if (currentObject?.hasValidLocation == true) {
+                                    DropdownMenuItem(
+                                        text = { Text("Open in Maps") },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            currentObject.latitude?.let { lat ->
+                                                currentObject.longitude?.let { lon ->
+                                                    val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(${Uri.encode(currentObject.name)})")
+                                                    val intent = Intent(Intent.ACTION_VIEW, uri)
+                                                    context.startActivity(intent)
+                                                }
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                painter = painterResource(id = R.drawable.ic_location),
+                                                contentDescription = null
+                                            )
+                                        }
                                     )
                                 }
-                            )
-                            if (currentObject?.hasValidLocation == true) {
-                                DropdownMenuItem(
-                                    text = { Text("Open in Maps") },
-                                    onClick = {
-                                        showOverflowMenu = false
-                                        currentObject.latitude?.let { lat ->
-                                            currentObject.longitude?.let { lon ->
-                                                val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(${Uri.encode(currentObject.name)})")
-                                                val intent = Intent(Intent.ACTION_VIEW, uri)
-                                                context.startActivity(intent)
-                                            }
+                                if (currentObject?.hasSubscription == true) {
+                                    DropdownMenuItem(
+                                        text = { Text("Subscribe") },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            viewModel.handleExplicitSubscription()
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                painter = painterResource(id = R.drawable.ic_payment),
+                                                contentDescription = null
+                                            )
                                         }
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_location),
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-                            }
-                            if (currentObject?.hasSubscription == true) {
+                                    )
+                                }
+                                if (currentObject?.information?.hasValidHtmlContent == true) {
+                                    DropdownMenuItem(
+                                        text = { Text("Info") },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            viewModel.showInfoSheet()
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                painter = painterResource(id = R.drawable.ic_info),
+                                                contentDescription = null
+                                            )
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
-                                    text = { Text("Subscribe") },
+                                    text = { Text("Details") },
                                     onClick = {
                                         showOverflowMenu = false
-                                        viewModel.handleExplicitSubscription()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_payment),
-                                            contentDescription = null
-                                        )
-                                    }
-                                )
-                            }
-                            if (currentObject?.information?.hasValidHtmlContent == true) {
-                                DropdownMenuItem(
-                                    text = { Text("Info") },
-                                    onClick = {
-                                        showOverflowMenu = false
-                                        viewModel.showInfoSheet()
+                                        viewModel.showDetailsSheet()
                                     },
                                     leadingIcon = {
                                         Icon(
@@ -357,110 +373,115 @@ fun ObjectDetailScreen(
                                     }
                                 )
                             }
-                            DropdownMenuItem(
-                                text = { Text("Details") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    viewModel.showDetailsSheet()
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        painter = painterResource(id = R.drawable.ic_info),
-                                        contentDescription = null
+                        }
+                    }
+                )
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) }
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                // Tab selector
+                val tabOptions = listOf("Object", "Logs")
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    tabOptions.forEachIndexed { index, label ->
+                        SegmentedButton(
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index = index,
+                                count = tabOptions.size
+                            ),
+                            onClick = {
+                                selectedTabIndex = index
+                                if (index == 1) {
+                                    logsViewModel.loadLogsIfNeeded()
+                                }
+                            },
+                            selected = index == selectedTabIndex
+                        ) {
+                            Text(label)
+                        }
+                    }
+                }
+
+                // Tab content
+                when (selectedTabIndex) {
+                    0 -> {
+                        // Object tab
+                        PullToRefreshBox(
+                            isRefreshing = isRefreshing,
+                            onRefresh = { viewModel.refresh() },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            when (val state = uiState) {
+                                is ObjectDetailUiState.Loading -> {
+                                    LoadingContent()
+                                }
+
+                                is ObjectDetailUiState.Success -> {
+                                    ObjectDetailContent(
+                                        solverObject = state.solverObject,
+                                        baseUrl = apiBaseUrl,
+                                        executingCommandId = executingCommandId,
+                                        lockBrand = lockBrand,
+                                        lockStatus = lockStatus,
+                                        lockCapabilities = lockCapabilities,
+                                        cachedOperation = cachedOperation,
+                                        cachedUnlockResult = cachedUnlockResult,
+                                        isDebugModeEnabled = isDebugModeEnabled,
+                                        onCommandClick = { command ->
+                                            viewModel.handleCommand(command)
+                                        },
+                                        onOpenInMaps = { lat, lon, name ->
+                                            val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(${Uri.encode(name)})")
+                                            val intent = Intent(Intent.ACTION_VIEW, uri)
+                                            context.startActivity(intent)
+                                        },
+                                        onUnlock = { withBluetoothPermission { viewModel.executeCachedUnlock("unlock") } },
+                                        onLock = { withBluetoothPermission { viewModel.executeCachedUnlock("lock") } },
+                                        onCheckStatus = { withBluetoothPermission { viewModel.checkLockStatus() } },
+                                        onGetKeys = { withBluetoothPermission { viewModel.fetchAndCacheKeys() } },
+                                        onClearKeys = { viewModel.clearCachedKeys() }
                                     )
                                 }
-                            )
+
+                                is ObjectDetailUiState.Error -> {
+                                    ErrorContent(
+                                        message = state.message,
+                                        onRetry = { viewModel.retry() }
+                                    )
+                                }
+                            }
                         }
                     }
+
+                    1 -> {
+                        // Logs tab
+                        ObjectLogsContent(logsViewModel = logsViewModel)
+                    }
                 }
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
+            }
+        }
+
+    }
+
+    if (commandFeedback != null) {
+        val feedback = requireNotNull(commandFeedback)
+        val feedbackSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.dismissCommandFeedback() },
+            sheetState = feedbackSheetState
         ) {
-            // Tab selector
-            val tabOptions = listOf("Object", "Logs")
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                tabOptions.forEachIndexed { index, label ->
-                    SegmentedButton(
-                        shape = SegmentedButtonDefaults.itemShape(
-                            index = index,
-                            count = tabOptions.size
-                        ),
-                        onClick = { 
-                            selectedTabIndex = index
-                            if (index == 1) {
-                                logsViewModel.loadLogsIfNeeded()
-                            }
-                        },
-                        selected = index == selectedTabIndex
-                    ) {
-                        Text(label)
-                    }
-                }
-            }
-            
-            // Tab content
-            when (selectedTabIndex) {
-                0 -> {
-                    // Object tab
-                    PullToRefreshBox(
-                        isRefreshing = isRefreshing,
-                        onRefresh = { viewModel.refresh() },
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        when (val state = uiState) {
-                            is ObjectDetailUiState.Loading -> {
-                                LoadingContent()
-                            }
-                            is ObjectDetailUiState.Success -> {
-                                ObjectDetailContent(
-                                    solverObject = state.solverObject,
-                                    baseUrl = apiBaseUrl,
-                                    executingCommandId = executingCommandId,
-                                    lockBrand = lockBrand,
-                                    lockStatus = lockStatus,
-                                    lockCapabilities = lockCapabilities,
-                                    cachedOperation = cachedOperation,
-                                    cachedUnlockResult = cachedUnlockResult,
-                                    isDebugModeEnabled = isDebugModeEnabled,
-                                    onCommandClick = { command ->
-                                        viewModel.handleCommand(command)
-                                    },
-                                    onOpenInMaps = { lat, lon, name ->
-                                        val uri = Uri.parse("geo:$lat,$lon?q=$lat,$lon(${Uri.encode(name)})")
-                                        val intent = Intent(Intent.ACTION_VIEW, uri)
-                                        context.startActivity(intent)
-                                    },
-                                    onUnlock = { withBluetoothPermission { viewModel.executeCachedUnlock("unlock") } },
-                                    onLock = { withBluetoothPermission { viewModel.executeCachedUnlock("lock") } },
-                                    onCheckStatus = { withBluetoothPermission { viewModel.checkLockStatus() } },
-                                    onGetKeys = { withBluetoothPermission { viewModel.fetchAndCacheKeys() } },
-                                    onClearKeys = { viewModel.clearCachedKeys() }
-                                )
-                            }
-                            is ObjectDetailUiState.Error -> {
-                                ErrorContent(
-                                    message = state.message,
-                                    onRetry = { viewModel.retry() }
-                                )
-                            }
-                        }
-                    }
-                }
-                1 -> {
-                    // Logs tab
-                    ObjectLogsContent(logsViewModel = logsViewModel)
-                }
-            }
+            CommandFeedbackSheetContent(
+                feedback = feedback,
+                onDismiss = { viewModel.dismissCommandFeedback() }
+            )
         }
     }
 
@@ -498,7 +519,8 @@ fun ObjectDetailScreen(
         ) {
             StatusSheetContent(
                 response = statusSheetResponse!!,
-                solverObject = viewModel.solverObject
+                solverObject = viewModel.solverObject,
+                onDismiss = { viewModel.dismissStatusSheet() }
             )
         }
     }
@@ -1331,6 +1353,7 @@ private fun ExecuteResponseSheetContent(
 private fun StatusSheetContent(
     response: ExecuteResponse,
     solverObject: SolverObject?,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val successColor = Color(0xFF4CAF50)
@@ -1344,6 +1367,20 @@ private fun StatusSheetContent(
             .padding(top = 8.dp, bottom = 40.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Status",
+                style = MaterialTheme.typography.titleLarge
+            )
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        }
+
         // Status Card - prominent display of success/failure
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -1550,6 +1587,123 @@ private fun ErrorContent(
                 Text("Retry")
             }
         }
+    }
+}
+
+@Composable
+private fun CommandFeedbackSheetContent(
+    feedback: CommandFeedback,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isSuccess = feedback.style == CommandFeedbackStyle.SUCCESS
+    val tintColor = when (feedback.style) {
+        CommandFeedbackStyle.SUCCESS -> Color(0xFF2E7D32)
+        CommandFeedbackStyle.FAILURE -> MaterialTheme.colorScheme.error
+    }
+    val containerColor = tintColor.copy(alpha = if (isSuccess) 0.14f else 0.11f)
+    val ctaText = "Done"
+
+    val icon = when (feedback.style) {
+        CommandFeedbackStyle.SUCCESS -> Icons.Default.CheckCircle
+        CommandFeedbackStyle.FAILURE -> Icons.Default.Warning
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(top = 8.dp, bottom = 40.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (isSuccess) "Success" else "Failed",
+                style = MaterialTheme.typography.titleLarge
+            )
+
+            TextButton(onClick = onDismiss) {
+                Text(ctaText)
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = containerColor,
+            tonalElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .background(
+                                color = tintColor,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(30.dp)
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = feedback.title,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = feedback.subtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (isSuccess) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            tint = tintColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                val detailMessage = feedback.message?.takeIf { it.isNotBlank() }
+                if (detailMessage != null) {
+                    HorizontalDivider(color = tintColor.copy(alpha = 0.25f))
+                    Text(
+                        text = detailMessage,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
     }
 }
 

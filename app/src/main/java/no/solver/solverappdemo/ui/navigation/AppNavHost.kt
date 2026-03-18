@@ -477,6 +477,7 @@ fun AppNavHost(
         val showPaymentSheet by deepLinkViewModel.paymentMiddleware.showPaymentSheet.collectAsState()
         val paymentContext by deepLinkViewModel.paymentMiddleware.paymentContext.collectAsState()
         val paymentAvailableMethods by deepLinkViewModel.paymentMiddleware.availableMethods.collectAsState()
+        val paymentIsLoading by deepLinkViewModel.paymentMiddleware.isLoading.collectAsState()
         val context = LocalContext.current
         val coroutineScope = rememberCoroutineScope()
         
@@ -488,6 +489,7 @@ fun AppNavHost(
                 PaymentMethodSheetContent(
                     context = paymentContext!!,
                     availableMethods = paymentAvailableMethods!!,
+                    isLoading = paymentIsLoading,
                     onSelectMethod = { method ->
                         coroutineScope.launch {
                             deepLinkViewModel.paymentMiddleware.handlePaymentMethodSelected(method, context)

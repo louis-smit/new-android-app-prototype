@@ -29,6 +29,7 @@ import no.solver.solverappdemo.features.objects.middleware.MasterlockMiddleware
 import no.solver.solverappdemo.features.objects.middleware.MiddlewareChain
 import no.solver.solverappdemo.features.objects.middleware.PaymentMiddleware
 import no.solver.solverappdemo.features.objects.middleware.SubscriptionMiddleware
+import no.solver.solverappdemo.features.objects.services.APIStatusService
 import javax.inject.Inject
 
 /**
@@ -94,6 +95,7 @@ class DeepLinkViewModel @Inject constructor(
     private val danalockMiddleware: DanalockMiddleware,
     private val masterlockMiddleware: MasterlockMiddleware,
     private val geofenceMiddleware: GeofenceMiddleware,
+    private val apiStatusService: APIStatusService,
     val paymentMiddleware: PaymentMiddleware,
     val subscriptionMiddleware: SubscriptionMiddleware
 ) : ViewModel() {
@@ -107,7 +109,7 @@ class DeepLinkViewModel @Inject constructor(
 
     private val middlewareChain: MiddlewareChain by lazy {
         MiddlewareChain.createStandardChain(
-            repository = objectsRepository,
+            apiStatusService = apiStatusService,
             paymentMiddleware = paymentMiddleware,
             subscriptionMiddleware = subscriptionMiddleware,
             geofenceMiddleware = geofenceMiddleware,
@@ -115,6 +117,9 @@ class DeepLinkViewModel @Inject constructor(
             masterlockMiddleware = masterlockMiddleware,
             onShowStatusSheet = { response ->
                 // Status sheet will be shown after middleware processing
+            },
+            onShowCommandFeedback = { _, _, _ ->
+                // Deep link flow already surfaces command results through the status sheet.
             }
         )
     }

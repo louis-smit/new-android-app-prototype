@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -94,6 +95,9 @@ class PaymentMiddleware @Inject constructor(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    // Prevent duplicate payment initiation when users tap repeatedly.
+    private val isPaymentSelectionInFlight = AtomicBoolean(false)
+
     override fun matches(response: ExecuteResponse, command: Command): Boolean {
         return !response.success && response.hasContextKey("paymentRequired")
     }
@@ -149,14 +153,20 @@ class PaymentMiddleware @Inject constructor(
      * Handle payment method selection from the sheet.
      */
     suspend fun handlePaymentMethodSelected(method: PaymentMethod, context: Context) {
+        if (!isPaymentSelectionInFlight.compareAndSet(false, true)) {
+            Log.w(TAG, "Ignoring duplicate payment method selection while payment is in flight")
+            return
+        }
+
         val paymentContext = _paymentContext.value ?: run {
             Log.e(TAG, "Payment context missing when method selected")
+            resetInFlightState()
             return
         }
 
         Log.i(TAG, "User selected payment method: ${method.value}")
-        _showPaymentSheet.value = false
         _isLoading.value = true
+        _showPaymentSheet.value = false
 
         val result = paymentService.initiatePayment(
             method = method,
@@ -178,8 +188,8 @@ class PaymentMiddleware @Inject constructor(
             handlePaymentResponse(method, paymentResponse, context)
         }.onFailure { error ->
             Log.e(TAG, "Payment initiation failed: ${error.message}")
-            _isLoading.value = false
             showError(error.message ?: "Payment initiation failed")
+            resetInFlightState()
         }
     }
 
@@ -204,15 +214,18 @@ class PaymentMiddleware @Inject constructor(
                     Log.i(TAG, "✅ Stripe payment successful")
                     paymentStorage.clearPendingPayment()
                     showSuccess()
+                    resetInFlightState()
                 }
                 is PaymentResult.Failure -> {
                     Log.e(TAG, "❌ Stripe payment failed: ${result.message}")
                     paymentStorage.clearPendingPayment()
                     showError(result.message)
+                    resetInFlightState()
                 }
                 is PaymentResult.Cancelled -> {
                     Log.i(TAG, "Stripe payment cancelled")
                     paymentStorage.clearPendingPayment()
+                    resetInFlightState()
                 }
             }
         }
@@ -230,6 +243,7 @@ class PaymentMiddleware @Inject constructor(
         if (urlString == null) {
             Log.e(TAG, "No redirect URL in payment response")
             showError("No redirect URL provided")
+            resetInFlightState()
             return
         }
 
@@ -249,6 +263,8 @@ class PaymentMiddleware @Inject constructor(
                 showError("Could not open payment page")
             }
         }
+
+        resetInFlightState()
     }
 
     /**
@@ -290,5 +306,10 @@ class PaymentMiddleware @Inject constructor(
     private fun showError(message: String) {
         _errorMessage.value = message
         _showErrorAlert.value = true
+    }
+
+    private fun resetInFlightState() {
+        _isLoading.value = false
+        isPaymentSelectionInFlight.set(false)
     }
 }

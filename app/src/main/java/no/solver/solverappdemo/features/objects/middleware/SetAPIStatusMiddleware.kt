@@ -4,10 +4,10 @@ import android.util.Log
 import no.solver.solverappdemo.data.models.Command
 import no.solver.solverappdemo.data.models.ExecuteResponse
 import no.solver.solverappdemo.data.models.SolverObject
-import no.solver.solverappdemo.data.repositories.ObjectsRepository
+import no.solver.solverappdemo.features.objects.services.APIStatusService
 
 class SetAPIStatusMiddleware(
-    private val repository: ObjectsRepository
+    private val statusService: APIStatusService
 ) : CommandMiddleware {
 
     companion object {
@@ -30,12 +30,13 @@ class SetAPIStatusMiddleware(
             return MiddlewareResult.NotApplicable
         }
 
-        Log.d(TAG, "Logging command execution to server for object ${solverObject.id}")
-
-        // TODO: Implement SetAPIStatus API call when endpoint is available
-        // This would log the command execution result to the server
-        // For now, just log locally
-        Log.i(TAG, "Command '${command.commandName}' executed successfully on '${solverObject.name}'")
+        Log.d(TAG, "Logging command execution to SetStatus for object ${solverObject.id}")
+        statusService.logCommandExecution(
+            response = response,
+            command = command,
+            solverObject = solverObject,
+            waitForResult = false
+        )
 
         return MiddlewareResult.NotApplicable
     }

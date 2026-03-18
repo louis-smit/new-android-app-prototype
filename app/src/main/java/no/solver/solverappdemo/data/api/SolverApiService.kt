@@ -7,6 +7,7 @@ import no.solver.solverappdemo.data.models.InitiateSubscriptionRequest
 import no.solver.solverappdemo.data.models.ObjectLog
 import no.solver.solverappdemo.data.models.PaymentResponse
 import no.solver.solverappdemo.data.models.ResourceIcon
+import no.solver.solverappdemo.data.models.SetStatusRequest
 import no.solver.solverappdemo.data.models.SolverObjectDTO
 import no.solver.solverappdemo.data.models.StripeOrder
 import no.solver.solverappdemo.data.models.SubscriptionOption
@@ -66,6 +67,12 @@ interface SolverApiService {
         @Path("command") command: String,
         @Path("input") input: String
     ): Response<ExecuteResponse>
+
+    @POST("api/Object/{objectId}/SetStatus")
+    suspend fun setStatus(
+        @Path("objectId") objectId: Int,
+        @Body request: SetStatusRequest
+    ): Response<Unit>
 
     // Search
     @GET("api/Object/UserObjects/v2/Search")

@@ -98,6 +98,7 @@ fun PaymentMethodSheetContent(
                 availableMethods.methods.forEach { method ->
                     PaymentMethodButton(
                         method = method,
+                        enabled = !isLoading,
                         onClick = { onSelectMethod(method) }
                     )
                 }
@@ -120,6 +121,7 @@ fun PaymentMethodSheetContent(
 @Composable
 private fun PaymentMethodButton(
     method: PaymentMethod,
+    enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -128,6 +130,7 @@ private fun PaymentMethodButton(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
         border = ButtonDefaults.outlinedButtonBorder(enabled = true),
+        enabled = enabled,
         onClick = onClick
     ) {
         Row(
@@ -370,6 +373,7 @@ fun SubscriptionPaymentMethodSheetContent(
                 availableMethods.methods.forEach { method ->
                     PaymentMethodButton(
                         method = method,
+                        enabled = !isLoading,
                         onClick = { onSelectMethod(method) }
                     )
                 }

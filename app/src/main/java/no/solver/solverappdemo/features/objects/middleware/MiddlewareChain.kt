@@ -4,7 +4,7 @@ import android.util.Log
 import no.solver.solverappdemo.data.models.Command
 import no.solver.solverappdemo.data.models.ExecuteResponse
 import no.solver.solverappdemo.data.models.SolverObject
-import no.solver.solverappdemo.data.repositories.ObjectsRepository
+import no.solver.solverappdemo.features.objects.services.APIStatusService
 
 data class MiddlewareProcessResult(
     val handled: Boolean,
@@ -21,13 +21,14 @@ class MiddlewareChain(
         private const val TAG = "MiddlewareChain"
 
         fun createStandardChain(
-            repository: ObjectsRepository,
+            apiStatusService: APIStatusService,
             paymentMiddleware: PaymentMiddleware,
             subscriptionMiddleware: SubscriptionMiddleware,
             geofenceMiddleware: GeofenceMiddleware,
             danalockMiddleware: DanalockMiddleware,
             masterlockMiddleware: MasterlockMiddleware,
-            onShowStatusSheet: (ExecuteResponse) -> Unit
+            onShowStatusSheet: (ExecuteResponse) -> Unit,
+            onShowCommandFeedback: (ExecuteResponse, Command, SolverObject) -> Unit
         ): MiddlewareChain {
             // Order matters: Bluetooth locks should be processed before generic handlers
             // because they intercept the command and execute via BLE instead of just logging
@@ -37,8 +38,9 @@ class MiddlewareChain(
                 paymentMiddleware,
                 subscriptionMiddleware,
                 geofenceMiddleware,
-                SetAPIStatusMiddleware(repository),
-                StatusMiddleware(onShowStatusSheet)
+                SetAPIStatusMiddleware(apiStatusService),
+                StatusMiddleware(onShowStatusSheet),
+                CommandFeedbackMiddleware(onShowCommandFeedback)
             )
             return MiddlewareChain(middlewares)
         }

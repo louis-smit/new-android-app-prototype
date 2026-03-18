@@ -7,7 +7,9 @@ import no.solver.solverappdemo.core.network.ApiException
 import no.solver.solverappdemo.core.network.ApiResult
 import no.solver.solverappdemo.data.api.ApiClientManager
 import no.solver.solverappdemo.data.models.CommandExecutionRequest
+import no.solver.solverappdemo.data.models.ContextItem
 import no.solver.solverappdemo.data.models.ExecuteResponse
+import no.solver.solverappdemo.data.models.SetStatusRequest
 import no.solver.solverappdemo.data.models.SolverObject
 import no.solver.solverappdemo.features.auth.services.SessionManager
 import kotlinx.coroutines.flow.first
@@ -126,6 +128,35 @@ class ObjectsRepository @Inject constructor(
                 response.body()?.map { it.toDomainModel() } ?: emptyList()
             } else {
                 throw ApiException.fromHttpCode(response.code(), response.message())
+            }
+        }
+    }
+
+    suspend fun logCommand(
+        response: ExecuteResponse,
+        additionalContext: List<ContextItem>,
+        objectId: Int
+    ): ApiResult<Unit> {
+        return ApiResult.runCatching {
+            val session = sessionManager.getCurrentSession()
+                ?: throw ApiException.Unauthorized("No active session")
+
+            val apiService = apiClientManager.getApiService(
+                environment = session.environment,
+                provider = session.provider
+            )
+
+            val mergedContext = (response.context ?: emptyList()) + additionalContext
+            val request = SetStatusRequest(
+                success = response.success,
+                objectName = response.objectName.orEmpty(),
+                objectType = response.objectType ?: 0,
+                context = mergedContext
+            )
+
+            val apiResponse = apiService.setStatus(objectId = objectId, request = request)
+            if (!apiResponse.isSuccessful) {
+                throw ApiException.fromHttpCode(apiResponse.code(), apiResponse.message())
             }
         }
     }

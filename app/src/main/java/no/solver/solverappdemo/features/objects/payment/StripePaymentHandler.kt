@@ -24,6 +24,7 @@ class StripePaymentHandler @Inject constructor() {
     private var paymentSheet: PaymentSheet? = null
     private var pendingCallback: ((PaymentResult) -> Unit)? = null
     private var activity: Activity? = null
+    private var isPresentingSheet: Boolean = false
 
     /**
      * Initialize PaymentSheet for an activity.
@@ -64,6 +65,12 @@ class StripePaymentHandler @Inject constructor() {
             return
         }
 
+        if (!tryAcquirePresentationLock()) {
+            Log.w(TAG, "Ignoring Stripe presentation request because another sheet is already active")
+            callback(PaymentResult.Failure("Another payment is already in progress"))
+            return
+        }
+
         pendingCallback = callback
 
         // Initialize Stripe with publishable key before presenting
@@ -78,32 +85,34 @@ class StripePaymentHandler @Inject constructor() {
         Log.i(TAG, "Presenting Stripe payment sheet")
 
         // Present payment sheet
-        sheet.presentWithPaymentIntent(
-            paymentIntentClientSecret = clientSecret,
-            configuration = configuration
-        )
+        try {
+            sheet.presentWithPaymentIntent(
+                paymentIntentClientSecret = clientSecret,
+                configuration = configuration
+            )
+        } catch (error: Exception) {
+            Log.e(TAG, "Failed to present Stripe payment sheet", error)
+            completePresentation(PaymentResult.Failure(error.localizedMessage ?: "Could not open Stripe payment"))
+        }
     }
 
     /**
      * Handle the payment sheet result.
      */
     private fun handlePaymentResult(result: PaymentSheetResult) {
-        val callback = pendingCallback
-        pendingCallback = null
-
         when (result) {
             is PaymentSheetResult.Completed -> {
                 Log.i(TAG, "✅ Stripe payment completed successfully")
-                callback?.invoke(PaymentResult.Success)
+                completePresentation(PaymentResult.Success)
             }
             is PaymentSheetResult.Failed -> {
                 val message = result.error.localizedMessage ?: "Payment failed"
                 Log.e(TAG, "❌ Stripe payment failed: $message")
-                callback?.invoke(PaymentResult.Failure(message))
+                completePresentation(PaymentResult.Failure(message))
             }
             is PaymentSheetResult.Canceled -> {
                 Log.i(TAG, "Payment cancelled by user")
-                callback?.invoke(PaymentResult.Cancelled)
+                completePresentation(PaymentResult.Cancelled)
             }
         }
     }
@@ -114,5 +123,27 @@ class StripePaymentHandler @Inject constructor() {
      */
     fun configureStripe(activity: Activity, publishableKey: String) {
         PaymentConfiguration.init(activity, publishableKey)
+    }
+
+    @Synchronized
+    private fun tryAcquirePresentationLock(): Boolean {
+        if (isPresentingSheet) {
+            return false
+        }
+
+        isPresentingSheet = true
+        return true
+    }
+
+    @Synchronized
+    private fun releasePresentationLock(): ((PaymentResult) -> Unit)? {
+        val callback = pendingCallback
+        pendingCallback = null
+        isPresentingSheet = false
+        return callback
+    }
+
+    private fun completePresentation(result: PaymentResult) {
+        releasePresentationLock()?.invoke(result)
     }
 }

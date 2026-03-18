@@ -134,6 +134,14 @@ data class ExecuteResponse(
 }
 
 @Serializable
+data class SetStatusRequest(
+    val success: Boolean,
+    val objectName: String,
+    val objectType: Int,
+    val context: List<ContextItem>
+)
+
+@Serializable
 data class ContextItem(
     val key: String,
     val label: String,
