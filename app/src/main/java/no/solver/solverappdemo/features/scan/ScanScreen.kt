@@ -31,7 +31,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -41,7 +40,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -52,6 +53,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import no.solver.solverappdemo.core.deeplink.DeepLinkViewModel
 import java.util.concurrent.Executors
@@ -71,6 +75,7 @@ private const val TAG = "ScanScreen"
 @Composable
 fun ScanScreen(
     deepLinkViewModel: DeepLinkViewModel,
+    isActive: Boolean = true,
     onScanSuccessNavigateHome: () -> Unit = {},
     scanViewModel: ScanViewModel = hiltViewModel()
 ) {
@@ -78,6 +83,23 @@ fun ScanScreen(
     val isBusy by deepLinkViewModel.isBusy.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    var isAppActive by remember { mutableStateOf(true) }
+
+    DisposableEffect(Unit) {
+        val lifecycleOwner = ProcessLifecycleOwner.get()
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> isAppActive = true
+                Lifecycle.Event.ON_STOP -> isAppActive = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Permission launcher
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -101,6 +123,11 @@ fun ScanScreen(
 
     // Show "Scan Again" when scanner is paused AND deep link flow is fully done
     val showScanAgain = uiState.scannerState == ScannerState.PAUSED && !isBusy
+    val isCameraSessionActive =
+        isActive &&
+            isAppActive &&
+            uiState.hasCameraPermission &&
+            uiState.scannerState == ScannerState.SCANNING
 
     // Successful scan flow completed: reset scanner and return user to Objects tab.
     LaunchedEffect(showScanAgain) {
@@ -127,12 +154,12 @@ fun ScanScreen(
                     CameraPreviewContent(
                         scanViewModel = scanViewModel,
                         deepLinkViewModel = deepLinkViewModel,
-                        isScanning = uiState.scannerState == ScannerState.SCANNING
+                        isSessionActive = isCameraSessionActive
                     )
 
                     // Viewfinder overlay (only while scanning)
                     AnimatedVisibility(
-                        visible = uiState.scannerState == ScannerState.SCANNING,
+                        visible = isCameraSessionActive,
                         enter = fadeIn(),
                         exit = fadeOut()
                     ) {
@@ -141,7 +168,7 @@ fun ScanScreen(
 
                     // Instruction text (only while scanning)
                     AnimatedVisibility(
-                        visible = uiState.scannerState == ScannerState.SCANNING,
+                        visible = isCameraSessionActive,
                         enter = fadeIn(),
                         exit = fadeOut(),
                         modifier = Modifier.align(Alignment.BottomCenter)
@@ -180,55 +207,91 @@ fun ScanScreen(
 private fun CameraPreviewContent(
     scanViewModel: ScanViewModel,
     deepLinkViewModel: DeepLinkViewModel,
-    isScanning: Boolean
+    isSessionActive: Boolean
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
+    var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+
+    val preview = remember { Preview.Builder().build() }
+    val imageAnalyzer = remember {
+        ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+    }
+
+    DisposableEffect(imageAnalyzer) {
+        imageAnalyzer.setAnalyzer(cameraExecutor, QRCodeAnalyzer { rawValue ->
+            val uri = scanViewModel.onQrCodeScanned(rawValue)
+            if (uri != null) {
+                Log.i(TAG, "📸 Valid QR code, forwarding to DeepLinkViewModel: $uri")
+                deepLinkViewModel.handle(uri)
+            }
+        })
+
+        onDispose {
+            imageAnalyzer.clearAnalyzer()
+        }
+    }
+
+    LaunchedEffect(previewView) {
+        val currentPreviewView = previewView ?: return@LaunchedEffect
+        if (cameraProvider != null) return@LaunchedEffect
+
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener(
+            {
+                runCatching {
+                    cameraProvider = cameraProviderFuture.get()
+                }.onFailure { error ->
+                    Log.e(TAG, "Failed to obtain camera provider", error)
+                }
+            },
+            ContextCompat.getMainExecutor(currentPreviewView.context)
+        )
+    }
+
+    LaunchedEffect(cameraProvider, previewView, lifecycleOwner, isSessionActive) {
+        val provider = cameraProvider ?: return@LaunchedEffect
+        val currentPreviewView = previewView ?: return@LaunchedEffect
+
+        runCatching {
+            provider.unbindAll()
+
+            if (isSessionActive) {
+                preview.setSurfaceProvider(currentPreviewView.surfaceProvider)
+                provider.bindToLifecycle(
+                    lifecycleOwner,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    imageAnalyzer
+                )
+            } else {
+                Log.d(TAG, "Camera session inactive, camera unbound")
+            }
+        }.onFailure { error ->
+            Log.e(TAG, "Camera bind/unbind failed", error)
+        }
+    }
 
     DisposableEffect(Unit) {
-        onDispose { cameraExecutor.shutdown() }
+        onDispose {
+            cameraProvider?.unbindAll()
+            imageAnalyzer.clearAnalyzer()
+            cameraExecutor.shutdown()
+        }
     }
 
     AndroidView(
         factory = { ctx ->
-            val previewView = PreviewView(ctx)
-            val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-
-            cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
-
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
-
-                val imageAnalyzer = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                    .also { analysis ->
-                        analysis.setAnalyzer(cameraExecutor, QRCodeAnalyzer { rawValue ->
-                            val uri = scanViewModel.onQrCodeScanned(rawValue)
-                            if (uri != null) {
-                                Log.i(TAG, "📸 Valid QR code, forwarding to DeepLinkViewModel: $uri")
-                                deepLinkViewModel.handle(uri)
-                            }
-                        })
-                    }
-
-                try {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        imageAnalyzer
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "Camera binding failed", e)
-                }
-            }, ContextCompat.getMainExecutor(ctx))
-
-            previewView
+            PreviewView(ctx).also { view ->
+                previewView = view
+            }
+        },
+        update = { view ->
+            previewView = view
         },
         modifier = Modifier.fillMaxSize()
     )

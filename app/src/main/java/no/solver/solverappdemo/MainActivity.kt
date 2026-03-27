@@ -12,6 +12,7 @@ import no.solver.solverappdemo.core.deeplink.DeepLinkConfirmationActivity
 import no.solver.solverappdemo.core.deeplink.DeepLinkParser
 import no.solver.solverappdemo.core.deeplink.DeepLinkViewModel
 import no.solver.solverappdemo.features.objects.payment.StripePaymentHandler
+import no.solver.solverappdemo.features.objects.result.ActionResultCenter
 import no.solver.solverappdemo.ui.navigation.AppNavHost
 import no.solver.solverappdemo.ui.theme.SolverAppTheme
 import javax.inject.Inject
@@ -40,6 +41,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var stripePaymentHandler: StripePaymentHandler
 
+    @Inject
+    lateinit var actionResultCenter: ActionResultCenter
+
     // Deep link handler ViewModel - shared with Compose via hiltViewModel()
     private val deepLinkViewModel: DeepLinkViewModel by viewModels()
 
@@ -55,7 +59,10 @@ class MainActivity : ComponentActivity() {
         
         setContent {
             SolverAppTheme {
-                AppNavHost(deepLinkViewModel = deepLinkViewModel)
+                AppNavHost(
+                    deepLinkViewModel = deepLinkViewModel,
+                    actionResultCenter = actionResultCenter
+                )
             }
         }
     }
@@ -72,14 +79,15 @@ class MainActivity : ComponentActivity() {
      */
     private fun handleDeepLinkIntent(intent: Intent?) {
         val uri = intent?.data ?: return
-        
-        // Only handle QR command deep links here
-        // Vipps OAuth is handled by AppAuth's RedirectUriReceiverActivity
-        if (DeepLinkParser.isQrCommandDeepLink(uri)) {
+        val isQrCommandDeepLink = DeepLinkParser.isQrCommandDeepLink(uri)
+        val isPaymentCallbackDeepLink = DeepLinkParser.isPaymentCallbackDeepLink(uri)
+
+        // Vipps OAuth is handled by AppAuth's RedirectUriReceiverActivity.
+        if (isQrCommandDeepLink || isPaymentCallbackDeepLink) {
             val confirmed = intent.getBooleanExtra(
                 DeepLinkConfirmationActivity.EXTRA_CONFIRMED, false
             )
-            Log.i(TAG, "📲 Processing QR deep link: $uri (confirmed=$confirmed)")
+            Log.i(TAG, "📲 Processing deep link: $uri (confirmed=$confirmed)")
             deepLinkViewModel.handle(uri, confirmed = confirmed)
         }
     }

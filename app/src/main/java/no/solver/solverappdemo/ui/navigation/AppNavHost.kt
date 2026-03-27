@@ -22,15 +22,12 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextButton
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -78,8 +75,9 @@ import no.solver.solverappdemo.features.more.PaymentsScreen
 import no.solver.solverappdemo.features.more.VisitScreen
 import no.solver.solverappdemo.features.objects.ObjectsScreen
 import no.solver.solverappdemo.features.objects.detail.ObjectDetailScreen
+import no.solver.solverappdemo.features.objects.result.ActionResultCenter
+import no.solver.solverappdemo.ui.components.ActionResultSheetHost
 import no.solver.solverappdemo.ui.components.PaymentMethodSheetContent
-import no.solver.solverappdemo.ui.components.StatusBottomSheetContent
 import no.solver.solverappdemo.ui.components.SubscriptionOptionsSheetContent
 
 private const val TRANSITION_DURATION_MS = 300
@@ -89,14 +87,14 @@ private const val TRANSITION_DURATION_MS = 300
 fun AppNavHost(
     navController: NavHostController = rememberNavController(),
     loginViewModel: LoginViewModel = hiltViewModel(),
-    deepLinkViewModel: DeepLinkViewModel = hiltViewModel()
+    deepLinkViewModel: DeepLinkViewModel = hiltViewModel(),
+    actionResultCenter: ActionResultCenter
 ) {
     val isAuthenticated by loginViewModel.isAuthenticated.collectAsState()
     val context = LocalContext.current
     
     // Deep link state
     val deepLinkState by deepLinkViewModel.uiState.collectAsState()
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Reactive navigation based on auth state (like iOS).
@@ -459,20 +457,6 @@ fun AppNavHost(
             }
         }
         
-        // Status bottom sheet for deep link results (matches iOS StatusBottomSheet)
-        if (deepLinkState.sheetVisible && deepLinkState.responseForSheet != null && deepLinkState.objectForSheet != null) {
-            ModalBottomSheet(
-                onDismissRequest = { deepLinkViewModel.dismissSheet() },
-                sheetState = sheetState
-            ) {
-                StatusBottomSheetContent(
-                    response = deepLinkState.responseForSheet!!,
-                    solverObject = deepLinkState.objectForSheet!!,
-                    onDismiss = { deepLinkViewModel.dismissSheet() }
-                )
-            }
-        }
-        
         // Payment Middleware Sheet (for deep link commands that require payment)
         val showPaymentSheet by deepLinkViewModel.paymentMiddleware.showPaymentSheet.collectAsState()
         val paymentContext by deepLinkViewModel.paymentMiddleware.paymentContext.collectAsState()
@@ -519,99 +503,7 @@ fun AppNavHost(
             }
         }
 
-        // Payment Success Alert (for deep link flows)
-        val showPaymentSuccess by deepLinkViewModel.paymentMiddleware.showSuccessAlert.collectAsState()
-
-        if (showPaymentSuccess) {
-            AlertDialog(
-                onDismissRequest = { deepLinkViewModel.paymentMiddleware.dismissSuccessAlert() },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                },
-                title = { Text("Payment Successful") },
-                text = { Text("Your payment was successful") },
-                confirmButton = {
-                    TextButton(onClick = { deepLinkViewModel.paymentMiddleware.dismissSuccessAlert() }) {
-                        Text("OK")
-                    }
-                }
-            )
-        }
-
-        // Payment Error Alert (for deep link flows)
-        val showPaymentError by deepLinkViewModel.paymentMiddleware.showErrorAlert.collectAsState()
-        val paymentErrorMessage by deepLinkViewModel.paymentMiddleware.errorMessage.collectAsState()
-
-        if (showPaymentError) {
-            AlertDialog(
-                onDismissRequest = { deepLinkViewModel.paymentMiddleware.dismissErrorAlert() },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                },
-                title = { Text("Payment Failed") },
-                text = { Text(paymentErrorMessage ?: "Payment was unsuccessful") },
-                confirmButton = {
-                    TextButton(onClick = { deepLinkViewModel.paymentMiddleware.dismissErrorAlert() }) {
-                        Text("OK")
-                    }
-                }
-            )
-        }
-
-        // Subscription Success Alert (for deep link flows)
-        val showSubscriptionSuccess by deepLinkViewModel.subscriptionMiddleware.showSuccessAlert.collectAsState()
-
-        if (showSubscriptionSuccess) {
-            AlertDialog(
-                onDismissRequest = { deepLinkViewModel.subscriptionMiddleware.dismissSuccessAlert() },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                },
-                title = { Text("Subscription Successful") },
-                text = { Text("Your subscription payment was successful") },
-                confirmButton = {
-                    TextButton(onClick = { deepLinkViewModel.subscriptionMiddleware.dismissSuccessAlert() }) {
-                        Text("OK")
-                    }
-                }
-            )
-        }
-
-        // Subscription Error Alert (for deep link flows)
-        val showSubscriptionError by deepLinkViewModel.subscriptionMiddleware.showErrorAlert.collectAsState()
-        val subscriptionErrorMessage by deepLinkViewModel.subscriptionMiddleware.errorMessage.collectAsState()
-
-        if (showSubscriptionError) {
-            AlertDialog(
-                onDismissRequest = { deepLinkViewModel.subscriptionMiddleware.dismissErrorAlert() },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                },
-                title = { Text("Subscription Failed") },
-                text = { Text(subscriptionErrorMessage ?: "Subscription payment was unsuccessful") },
-                confirmButton = {
-                    TextButton(onClick = { deepLinkViewModel.subscriptionMiddleware.dismissErrorAlert() }) {
-                        Text("OK")
-                    }
-                }
-            )
-        }
+        ActionResultSheetHost(center = actionResultCenter)
         
         // Snackbar host for errors
         SnackbarHost(
@@ -697,6 +589,7 @@ fun MainScreen(
             MainDestination.SCAN -> {
                 ScanScreen(
                     deepLinkViewModel = deepLinkViewModel,
+                    isActive = currentDestination == MainDestination.SCAN,
                     onScanSuccessNavigateHome = { currentDestination = MainDestination.OBJECTS }
                 )
             }

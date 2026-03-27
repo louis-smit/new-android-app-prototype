@@ -1,5 +1,6 @@
 package no.solver.solverappdemo.data.models
 
+import java.util.Locale
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -124,12 +125,92 @@ data class ExecuteResponse(
     val time: String? = null,
     val context: List<ContextItem>? = null
 ) {
+    companion object {
+        private val nonUserMessageContextKeys: Set<String> = setOf(
+            "paymentrequired",
+            "subscriptionrequired",
+            "geofenceoverride",
+            "vendingtransid",
+            "command",
+            "serial_number",
+            "login_token",
+            "advertising_key",
+            "deviceidentifier",
+            "accessprofile",
+            "firmwareversion",
+            "valid_from",
+            "valid_to",
+            "profileexpiration",
+            "username"
+        )
+    }
+
+    fun findContextItem(key: String): ContextItem? {
+        return context?.firstOrNull { it.key.equals(key, ignoreCase = true) }
+    }
+
     fun findValueInContext(key: String): String? {
-        return context?.find { it.key == key }?.value
+        return findContextItem(key)?.value
     }
 
     fun hasContextKey(key: String): Boolean {
-        return context?.any { it.key == key } ?: false
+        return findContextItem(key) != null
+    }
+
+    /**
+     * Best-effort extraction of the message users should see for a failed command.
+     *
+     * Older APIs often used `context.error` (`label` + `value`) instead of `context.message`.
+     */
+    fun userFacingContextMessage(): String? {
+        trimmedNonEmpty(findValueInContext("message"))?.let { message ->
+            return message
+        }
+
+        findContextItem("error")?.let { errorItem ->
+            val label = trimmedNonEmpty(errorItem.label)
+            val value = trimmedNonEmpty(errorItem.value)
+
+            if (label != null && value != null) {
+                return "$label: $value"
+            }
+
+            return value ?: label
+        }
+
+        val contextItems = context.orEmpty()
+        if (contextItems.isEmpty()) {
+            return null
+        }
+
+        for (item in contextItems) {
+            val key = item.key.lowercase(Locale.ROOT)
+            if (key in nonUserMessageContextKeys) {
+                continue
+            }
+
+            val label = trimmedNonEmpty(item.label)
+            val value = trimmedNonEmpty(item.value)
+
+            if (label != null && value != null) {
+                return "$label: $value"
+            }
+
+            if (value != null) {
+                return value
+            }
+
+            if (label != null) {
+                return label
+            }
+        }
+
+        return null
+    }
+
+    private fun trimmedNonEmpty(value: String?): String? {
+        val trimmed = value?.trim()
+        return if (trimmed.isNullOrEmpty()) null else trimmed
     }
 }
 

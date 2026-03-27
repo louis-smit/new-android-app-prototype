@@ -389,7 +389,7 @@ private fun SignInButtons(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Mobile",
+                    text = "Mobile Number",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.SemiBold
                     )

@@ -1,10 +1,9 @@
 package no.solver.solverappdemo.data.repositories
 
 import io.mockk.coEvery
-import io.mockk.every
 import io.mockk.mockk
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
 import no.solver.solverappdemo.core.network.ApiException
@@ -27,6 +26,7 @@ class ObjectsRepositoryTest {
     private lateinit var apiClientManager: ApiClientManager
     private lateinit var sessionManager: SessionManager
     private lateinit var apiService: SolverApiService
+    private lateinit var json: Json
     private lateinit var repository: ObjectsRepository
 
     @Before
@@ -34,12 +34,15 @@ class ObjectsRepositoryTest {
         apiClientManager = mockk(relaxed = true)
         sessionManager = mockk(relaxed = true)
         apiService = mockk(relaxed = true)
-        
+        json = Json {
+            ignoreUnknownKeys = true
+        }
+
         coEvery { apiClientManager.getApiService(any(), any()) } returns apiService
     }
 
     private fun createRepository(): ObjectsRepository {
-        return ObjectsRepository(apiClientManager, sessionManager)
+        return ObjectsRepository(apiClientManager, sessionManager, json)
     }
 
     private fun createSession() = Session(

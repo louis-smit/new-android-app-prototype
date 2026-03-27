@@ -38,7 +38,7 @@ class CommandFeedbackMiddleware(
         onShowCommandFeedback(response, command, solverObject)
 
         return MiddlewareResult.Handled(
-            message = "Command feedback shown",
+            message = "Command result displayed in action result sheet",
             suppressDebugUI = true
         )
     }

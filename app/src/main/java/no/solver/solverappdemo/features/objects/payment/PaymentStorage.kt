@@ -17,7 +17,8 @@ data class PendingPayment(
     val method: PaymentMethod,
     val response: PaymentResponse?,
     val objectId: Int,
-    val command: String
+    val command: String,
+    val commandDisplayName: String?
 )
 
 /**
@@ -34,6 +35,7 @@ class PaymentStorage @Inject constructor(
         private const val KEY_PAYMENT_RESPONSE = "pending_payment_response"
         private const val KEY_OBJECT_ID = "pending_payment_object_id"
         private const val KEY_COMMAND = "pending_payment_command"
+        private const val KEY_COMMAND_DISPLAY_NAME = "pending_payment_command_display_name"
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -46,12 +48,14 @@ class PaymentStorage @Inject constructor(
         method: PaymentMethod,
         response: PaymentResponse,
         objectId: Int,
-        command: String
+        command: String,
+        commandDisplayName: String?
     ) {
         prefs.edit().apply {
             putString(KEY_PAYMENT_METHOD, method.value)
             putInt(KEY_OBJECT_ID, objectId)
             putString(KEY_COMMAND, command)
+            putString(KEY_COMMAND_DISPLAY_NAME, commandDisplayName)
             try {
                 putString(KEY_PAYMENT_RESPONSE, json.encodeToString(response))
             } catch (e: Exception) {
@@ -83,7 +87,8 @@ class PaymentStorage @Inject constructor(
             method = method,
             response = response,
             objectId = objectId,
-            command = command
+            command = command,
+            commandDisplayName = prefs.getString(KEY_COMMAND_DISPLAY_NAME, null)
         )
     }
 
@@ -96,6 +101,7 @@ class PaymentStorage @Inject constructor(
             remove(KEY_PAYMENT_RESPONSE)
             remove(KEY_OBJECT_ID)
             remove(KEY_COMMAND)
+            remove(KEY_COMMAND_DISPLAY_NAME)
             apply()
         }
     }

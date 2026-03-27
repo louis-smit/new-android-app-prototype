@@ -6,7 +6,7 @@ import no.solver.solverappdemo.data.models.ExecuteResponse
 import no.solver.solverappdemo.data.models.SolverObject
 
 class StatusMiddleware(
-    private val onShowStatusSheet: (ExecuteResponse) -> Unit
+    private val onShowActionResult: (ExecuteResponse, Command, SolverObject) -> Unit
 ) : CommandMiddleware {
 
     companion object {
@@ -30,15 +30,15 @@ class StatusMiddleware(
             return MiddlewareResult.NotApplicable
         }
 
-        Log.d(TAG, "Status command detected, showing status sheet")
+        Log.d(TAG, "Status command detected, showing unified action result")
         Log.d(TAG, "  → Command: ${command.commandName}")
         Log.d(TAG, "  → Object: ${solverObject.name}")
         Log.d(TAG, "  → Success: ${response.success}")
 
-        onShowStatusSheet(response)
+        onShowActionResult(response, command, solverObject)
 
         return MiddlewareResult.Handled(
-            message = "Status displayed in bottom sheet",
+            message = "Status displayed in action result sheet",
             suppressDebugUI = true
         )
     }

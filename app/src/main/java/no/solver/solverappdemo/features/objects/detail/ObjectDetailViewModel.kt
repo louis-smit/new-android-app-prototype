@@ -6,8 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +31,10 @@ import no.solver.solverappdemo.features.objects.middleware.MasterlockMiddleware
 import no.solver.solverappdemo.features.objects.middleware.MiddlewareChain
 import no.solver.solverappdemo.features.objects.middleware.PaymentMiddleware
 import no.solver.solverappdemo.features.objects.middleware.SubscriptionMiddleware
+import no.solver.solverappdemo.features.objects.result.ActionResultCenter
+import no.solver.solverappdemo.features.objects.result.ActionResultKind
+import no.solver.solverappdemo.features.objects.result.ActionResultPresentation
+import no.solver.solverappdemo.features.objects.result.ActionResultState
 import no.solver.solverappdemo.features.objects.services.APIStatusService
 import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockBrand
 import no.solver.solverappdemo.core.bluetooth.smartlock.SmartLockCapabilities
@@ -59,19 +61,6 @@ enum class CachedOperation {
     FETCHING_KEYS
 }
 
-enum class CommandFeedbackStyle {
-    SUCCESS,
-    FAILURE
-}
-
-data class CommandFeedback(
-    val id: Long = System.nanoTime(),
-    val style: CommandFeedbackStyle,
-    val title: String,
-    val subtitle: String,
-    val message: String?
-)
-
 @HiltViewModel
 class ObjectDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -83,6 +72,7 @@ class ObjectDetailViewModel @Inject constructor(
     private val smartLockManager: SmartLockManager,
     private val apiStatusService: APIStatusService,
     private val debugConfigurationManager: DebugConfigurationManager,
+    private val actionResultCenter: ActionResultCenter,
     val paymentMiddleware: PaymentMiddleware,
     val subscriptionMiddleware: SubscriptionMiddleware,
     val geofenceMiddleware: GeofenceMiddleware
@@ -120,11 +110,6 @@ class ObjectDetailViewModel @Inject constructor(
     private val _commandError = MutableStateFlow<String?>(null)
     val commandError: StateFlow<String?> = _commandError.asStateFlow()
 
-    private val _commandFeedback = MutableStateFlow<CommandFeedback?>(null)
-    val commandFeedback: StateFlow<CommandFeedback?> = _commandFeedback.asStateFlow()
-
-    private var commandFeedbackDismissJob: Job? = null
-
     private val _bookingUrlToOpen = MutableStateFlow<String?>(null)
     val bookingUrlToOpen: StateFlow<String?> = _bookingUrlToOpen.asStateFlow()
 
@@ -137,13 +122,6 @@ class ObjectDetailViewModel @Inject constructor(
 
     private val _commandInput = MutableStateFlow("")
     val commandInput: StateFlow<String> = _commandInput.asStateFlow()
-
-    // Status sheet state
-    private val _showStatusSheet = MutableStateFlow(false)
-    val showStatusSheet: StateFlow<Boolean> = _showStatusSheet.asStateFlow()
-
-    private val _statusSheetResponse = MutableStateFlow<ExecuteResponse?>(null)
-    val statusSheetResponse: StateFlow<ExecuteResponse?> = _statusSheetResponse.asStateFlow()
 
     // Details sheet state
     private val _showDetailsSheet = MutableStateFlow(false)
@@ -227,12 +205,8 @@ class ObjectDetailViewModel @Inject constructor(
             geofenceMiddleware = geofenceMiddleware,
             danalockMiddleware = danalockMiddleware,
             masterlockMiddleware = masterlockMiddleware,
-            onShowStatusSheet = { response ->
-                _statusSheetResponse.value = response
-                _showStatusSheet.value = true
-            },
-            onShowCommandFeedback = { response, command, solverObject ->
-                presentCommandFeedback(response, command, solverObject)
+            onShowActionResult = { response, command, solverObject ->
+                presentActionResult(response, command, solverObject)
             }
         )
     }
@@ -341,6 +315,9 @@ class ObjectDetailViewModel @Inject constructor(
                     val solverObject = result.data
                     _uiState.value = ObjectDetailUiState.Success(solverObject)
                     Log.d(TAG, "Successfully refreshed object: ${solverObject.name}")
+
+                    // Keep key state recoverable when lock controls are gated on valid tokens.
+                    autoFetchKeysIfNeeded(solverObject)
                 }
                 is ApiResult.Error -> {
                     Log.e(TAG, "Failed to refresh object: ${result.exception.message}")
@@ -454,7 +431,6 @@ class ObjectDetailViewModel @Inject constructor(
             if (input != null) " with input: $input" else "")
         _executingCommandId.value = command.commandName
         _commandError.value = null
-        dismissCommandFeedback()
         _lastExecuteResponse.value = null
         _middlewareMessage.value = null
 
@@ -477,6 +453,10 @@ class ObjectDetailViewModel @Inject constructor(
                 // Process through middleware chain
                 val middlewareResult = middlewareChain.process(response, command, obj)
                 _middlewareMessage.value = middlewareResult.message
+
+                if (!middlewareResult.handled) {
+                    presentActionResult(response, command, obj)
+                }
 
                 if (middlewareResult.shouldShowDebugUI) {
                     _showExecuteResponse.value = true
@@ -503,50 +483,22 @@ class ObjectDetailViewModel @Inject constructor(
         _showExecuteResponse.value = false
     }
 
-    fun dismissStatusSheet() {
-        _showStatusSheet.value = false
-        _statusSheetResponse.value = null
-    }
-
     fun dismissCommandError() {
         _commandError.value = null
-    }
-
-    fun dismissCommandFeedback() {
-        commandFeedbackDismissJob?.cancel()
-        commandFeedbackDismissJob = null
-        _commandFeedback.value = null
     }
 
     fun onBookingUrlOpened() {
         _bookingUrlToOpen.value = null
     }
 
-    private fun presentCommandFeedback(response: ExecuteResponse, command: Command, solverObject: SolverObject) {
-        val feedback = CommandFeedback(
-            style = if (response.success) CommandFeedbackStyle.SUCCESS else CommandFeedbackStyle.FAILURE,
-            title = if (response.success) {
-                "${command.displayName} completed"
-            } else {
-                "${command.displayName} failed"
-            },
-            subtitle = solverObject.name,
-            message = response.findValueInContext("message")
+    private fun presentActionResult(response: ExecuteResponse, command: Command, solverObject: SolverObject) {
+        actionResultCenter.publish(
+            ActionResultPresentation.commandExecution(
+                response = response,
+                command = command,
+                solverObject = solverObject
+            )
         )
-
-        _commandFeedback.value = feedback
-
-        commandFeedbackDismissJob?.cancel()
-        commandFeedbackDismissJob = null
-
-        if (feedback.style == CommandFeedbackStyle.SUCCESS) {
-            commandFeedbackDismissJob = viewModelScope.launch {
-                delay(5_000)
-                if (_commandFeedback.value?.id == feedback.id) {
-                    _commandFeedback.value = null
-                }
-            }
-        }
     }
 
     // MARK: - Menu Actions
@@ -633,6 +585,11 @@ class ObjectDetailViewModel @Inject constructor(
                 onSuccess = { message ->
                     Log.i(TAG, "Smart lock $commandName succeeded: $message")
                     _cachedUnlockResult.value = message
+                    publishSmartLockActionResult(
+                        commandName = commandName,
+                        state = ActionResultState.SUCCESS,
+                        message = message
+                    )
 
                     viewModelScope.launch {
                         logDirectSmartLockSuccess(obj, commandName, brand)
@@ -641,12 +598,44 @@ class ObjectDetailViewModel @Inject constructor(
                 onFailure = { error ->
                     Log.e(TAG, "Smart lock $commandName failed: ${error.message}")
                     _cachedUnlockResult.value = "Error: ${error.message}"
-                    _commandError.value = error.message
+                    publishSmartLockActionResult(
+                        commandName = commandName,
+                        state = ActionResultState.FAILURE,
+                        message = error.message ?: "Command failed"
+                    )
                 }
             )
 
             _cachedOperation.value = CachedOperation.NONE
         }
+    }
+
+    private fun publishSmartLockActionResult(
+        commandName: String,
+        state: ActionResultState,
+        message: String
+    ) {
+        val displayName = commandName
+            .replace("_", " ")
+            .trim()
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+        val titleSuffix = when (state) {
+            ActionResultState.SUCCESS -> "Succeeded"
+            ActionResultState.FAILURE -> "Failed"
+            ActionResultState.CANCELLED -> "Cancelled"
+            ActionResultState.PROCESSING -> "Processing"
+        }
+
+        actionResultCenter.publish(
+            ActionResultPresentation(
+                kind = ActionResultKind.COMMAND,
+                state = state,
+                title = "$displayName $titleSuffix",
+                message = message,
+                timestampText = ActionResultPresentation.currentTimestampText()
+            )
+        )
     }
 
     private suspend fun logDirectSmartLockSuccess(
@@ -801,7 +790,6 @@ class ObjectDetailViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        commandFeedbackDismissJob?.cancel()
         viewModelScope.launch {
             smartLockManager.stopAllAdapters()
         }

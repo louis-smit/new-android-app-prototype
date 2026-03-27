@@ -117,13 +117,10 @@ fun ObjectDetailScreen(
     val lastExecuteResponse by viewModel.lastExecuteResponse.collectAsState()
     val middlewareMessage by viewModel.middlewareMessage.collectAsState()
     val commandError by viewModel.commandError.collectAsState()
-    val commandFeedback by viewModel.commandFeedback.collectAsState()
     val showInputDialog by viewModel.showInputDialog.collectAsState()
     val pendingCommand by viewModel.pendingCommand.collectAsState()
     val commandInput by viewModel.commandInput.collectAsState()
     val bookingUrlToOpen by viewModel.bookingUrlToOpen.collectAsState()
-    val showStatusSheet by viewModel.showStatusSheet.collectAsState()
-    val statusSheetResponse by viewModel.statusSheetResponse.collectAsState()
     val showDetailsSheet by viewModel.showDetailsSheet.collectAsState()
     val isFavourite by viewModel.isFavourite.collectAsState()
     val showInfoSheet by viewModel.showInfoSheet.collectAsState()
@@ -470,21 +467,6 @@ fun ObjectDetailScreen(
         }
 
     }
-
-    if (commandFeedback != null) {
-        val feedback = requireNotNull(commandFeedback)
-        val feedbackSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = { viewModel.dismissCommandFeedback() },
-            sheetState = feedbackSheetState
-        ) {
-            CommandFeedbackSheetContent(
-                feedback = feedback,
-                onDismiss = { viewModel.dismissCommandFeedback() }
-            )
-        }
-    }
-
     // Input Dialog
     if (showInputDialog && pendingCommand != null) {
         CommandInputDialog(
@@ -506,21 +488,6 @@ fun ObjectDetailScreen(
             ExecuteResponseSheetContent(
                 response = lastExecuteResponse!!,
                 middlewareMessage = middlewareMessage
-            )
-        }
-    }
-
-    // Status Bottom Sheet
-    if (showStatusSheet && statusSheetResponse != null) {
-        val sheetState = rememberModalBottomSheetState()
-        ModalBottomSheet(
-            onDismissRequest = { viewModel.dismissStatusSheet() },
-            sheetState = sheetState
-        ) {
-            StatusSheetContent(
-                response = statusSheetResponse!!,
-                solverObject = viewModel.solverObject,
-                onDismiss = { viewModel.dismissStatusSheet() }
             )
         }
     }
@@ -604,23 +571,40 @@ fun ObjectDetailScreen(
     val showSubPaymentSheet by viewModel.subscriptionMiddleware.showPaymentMethodSheet.collectAsState()
     val selectedSubscription by viewModel.subscriptionMiddleware.selectedSubscription.collectAsState()
     val subscriptionPaymentMethods by viewModel.subscriptionMiddleware.availableMethods.collectAsState()
+    var wasSubPaymentSheetVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(showSubPaymentSheet) {
+        if (wasSubPaymentSheetVisible && !showSubPaymentSheet) {
+            viewModel.subscriptionMiddleware.handlePaymentMethodSheetDismissed()
+        }
+        wasSubPaymentSheetVisible = showSubPaymentSheet
+    }
 
     if (showSubPaymentSheet && selectedSubscription != null && subscriptionPaymentMethods != null) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
-            onDismissRequest = { viewModel.subscriptionMiddleware.dismissPaymentMethodSheet() },
+            onDismissRequest = {
+                if (!subscriptionIsLoading) {
+                    viewModel.subscriptionMiddleware.dismissPaymentMethodSheet()
+                }
+            },
             sheetState = sheetState
         ) {
             SubscriptionPaymentMethodSheetContent(
                 subscription = selectedSubscription!!,
                 availableMethods = subscriptionPaymentMethods!!,
                 isLoading = subscriptionIsLoading,
+                allowDismiss = !subscriptionIsLoading,
                 onSelectMethod = { method ->
                     scope.launch {
                         viewModel.subscriptionMiddleware.handlePaymentMethodSelected(method, context)
                     }
                 },
-                onDismiss = { viewModel.subscriptionMiddleware.dismissPaymentMethodSheet() }
+                onDismiss = {
+                    if (!subscriptionIsLoading) {
+                        viewModel.subscriptionMiddleware.dismissPaymentMethodSheet()
+                    }
+                }
             )
         }
     }
@@ -694,99 +678,6 @@ fun ObjectDetailScreen(
         )
     }
 
-    // Payment Success Alert
-    val showPaymentSuccess by viewModel.paymentMiddleware.showSuccessAlert.collectAsState()
-
-    if (showPaymentSuccess) {
-        AlertDialog(
-            onDismissRequest = { viewModel.paymentMiddleware.dismissSuccessAlert() },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            },
-            title = { Text("Payment Successful") },
-            text = { Text("Your payment was successful") },
-            confirmButton = {
-                TextButton(onClick = { viewModel.paymentMiddleware.dismissSuccessAlert() }) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-
-    // Payment Error Alert
-    val showPaymentError by viewModel.paymentMiddleware.showErrorAlert.collectAsState()
-    val paymentErrorMessage by viewModel.paymentMiddleware.errorMessage.collectAsState()
-
-    if (showPaymentError) {
-        AlertDialog(
-            onDismissRequest = { viewModel.paymentMiddleware.dismissErrorAlert() },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = { Text("Payment Failed") },
-            text = { Text(paymentErrorMessage ?: "Payment was unsuccessful") },
-            confirmButton = {
-                TextButton(onClick = { viewModel.paymentMiddleware.dismissErrorAlert() }) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-
-    // Subscription Success Alert
-    val showSubscriptionSuccess by viewModel.subscriptionMiddleware.showSuccessAlert.collectAsState()
-
-    if (showSubscriptionSuccess) {
-        AlertDialog(
-            onDismissRequest = { viewModel.subscriptionMiddleware.dismissSuccessAlert() },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            },
-            title = { Text("Subscription Successful") },
-            text = { Text("Your subscription payment was successful") },
-            confirmButton = {
-                TextButton(onClick = { viewModel.subscriptionMiddleware.dismissSuccessAlert() }) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-
-    // Subscription Error Alert
-    val showSubscriptionError by viewModel.subscriptionMiddleware.showErrorAlert.collectAsState()
-    val subscriptionErrorMessage by viewModel.subscriptionMiddleware.errorMessage.collectAsState()
-
-    if (showSubscriptionError) {
-        AlertDialog(
-            onDismissRequest = { viewModel.subscriptionMiddleware.dismissErrorAlert() },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
-                )
-            },
-            title = { Text("Subscription Failed") },
-            text = { Text(subscriptionErrorMessage ?: "Subscription payment was unsuccessful") },
-            confirmButton = {
-                TextButton(onClick = { viewModel.subscriptionMiddleware.dismissErrorAlert() }) {
-                    Text("OK")
-                }
-            }
-        )
-    }
 }
 
 @Composable
@@ -1587,123 +1478,6 @@ private fun ErrorContent(
                 Text("Retry")
             }
         }
-    }
-}
-
-@Composable
-private fun CommandFeedbackSheetContent(
-    feedback: CommandFeedback,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val isSuccess = feedback.style == CommandFeedbackStyle.SUCCESS
-    val tintColor = when (feedback.style) {
-        CommandFeedbackStyle.SUCCESS -> Color(0xFF2E7D32)
-        CommandFeedbackStyle.FAILURE -> MaterialTheme.colorScheme.error
-    }
-    val containerColor = tintColor.copy(alpha = if (isSuccess) 0.14f else 0.11f)
-    val ctaText = "Done"
-
-    val icon = when (feedback.style) {
-        CommandFeedbackStyle.SUCCESS -> Icons.Default.CheckCircle
-        CommandFeedbackStyle.FAILURE -> Icons.Default.Warning
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp)
-            .padding(top = 8.dp, bottom = 40.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (isSuccess) "Success" else "Failed",
-                style = MaterialTheme.typography.titleLarge
-            )
-
-            TextButton(onClick = onDismiss) {
-                Text(ctaText)
-            }
-        }
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            color = containerColor,
-            tonalElevation = 0.dp
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(52.dp)
-                            .background(
-                                color = tintColor,
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
-
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        Text(
-                            text = feedback.title,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = feedback.subtitle,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    if (isSuccess) {
-                        Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = null,
-                            tint = tintColor,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
-                val detailMessage = feedback.message?.takeIf { it.isNotBlank() }
-                if (detailMessage != null) {
-                    HorizontalDivider(color = tintColor.copy(alpha = 0.25f))
-                    Text(
-                        text = detailMessage,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
     }
 }
 

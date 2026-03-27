@@ -29,6 +29,8 @@ import no.solver.solverappdemo.features.objects.middleware.MasterlockMiddleware
 import no.solver.solverappdemo.features.objects.middleware.MiddlewareChain
 import no.solver.solverappdemo.features.objects.middleware.PaymentMiddleware
 import no.solver.solverappdemo.features.objects.middleware.SubscriptionMiddleware
+import no.solver.solverappdemo.features.objects.result.ActionResultCenter
+import no.solver.solverappdemo.features.objects.result.ActionResultPresentation
 import no.solver.solverappdemo.features.objects.services.APIStatusService
 import javax.inject.Inject
 
@@ -57,18 +59,8 @@ data class DeepLinkUiState(
     val showConfirmation: Boolean = false,
     /** Confirmation state (loading/ready/error) */
     val confirmationState: ConfirmationState? = null,
-    /** True when status sheet should be shown */
-    val sheetVisible: Boolean = false,
-    /** The object for the status sheet */
-    val objectForSheet: SolverObject? = null,
-    /** The response for the status sheet */
-    val responseForSheet: ExecuteResponse? = null,
     /** Error message if something went wrong */
     val error: String? = null,
-    /** Payment callback state */
-    val paymentCallbackMethod: PaymentMethod? = null,
-    val paymentCallbackReference: String? = null,
-    val showPaymentCallback: Boolean = false,
     /** One-shot URL event for opening booking pages */
     val bookingUrlToOpen: String? = null
 )
@@ -96,6 +88,7 @@ class DeepLinkViewModel @Inject constructor(
     private val masterlockMiddleware: MasterlockMiddleware,
     private val geofenceMiddleware: GeofenceMiddleware,
     private val apiStatusService: APIStatusService,
+    private val actionResultCenter: ActionResultCenter,
     val paymentMiddleware: PaymentMiddleware,
     val subscriptionMiddleware: SubscriptionMiddleware
 ) : ViewModel() {
@@ -115,11 +108,14 @@ class DeepLinkViewModel @Inject constructor(
             geofenceMiddleware = geofenceMiddleware,
             danalockMiddleware = danalockMiddleware,
             masterlockMiddleware = masterlockMiddleware,
-            onShowStatusSheet = { response ->
-                // Status sheet will be shown after middleware processing
-            },
-            onShowCommandFeedback = { _, _, _ ->
-                // Deep link flow already surfaces command results through the status sheet.
+            onShowActionResult = { response, command, solverObject ->
+                actionResultCenter.publish(
+                    ActionResultPresentation.commandExecution(
+                        response = response,
+                        command = command,
+                        solverObject = solverObject
+                    )
+                )
             }
         )
     }
@@ -132,17 +128,17 @@ class DeepLinkViewModel @Inject constructor(
     val isBusy: StateFlow<Boolean> = combine(
         _uiState,
         paymentMiddleware.showPaymentSheet,
-        paymentMiddleware.showPaymentCallback,
-        paymentMiddleware.showSuccessAlert,
-        paymentMiddleware.showErrorAlert,
         subscriptionMiddleware.showSubscriptionOptionsSheet,
         subscriptionMiddleware.showPaymentMethodSheet,
-        subscriptionMiddleware.showSuccessAlert,
-        subscriptionMiddleware.showErrorAlert
+        actionResultCenter.current
     ) { values ->
         val state = values[0] as DeepLinkUiState
-        val anySheetOpen = values.drop(1).any { it as Boolean }
-        state.isExecuting || state.showConfirmation || state.sheetVisible || anySheetOpen
+        val anySheetOpen = values
+            .drop(1)
+            .dropLast(1)
+            .any { it as Boolean }
+        val hasActionResult = values.last() != null
+        state.isExecuting || state.showConfirmation || anySheetOpen || hasActionResult
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -260,24 +256,9 @@ class DeepLinkViewModel @Inject constructor(
      * Handle payment callback from external payment flow (Vipps/Card).
      */
     private fun handlePaymentCallback(method: PaymentMethod, reference: String) {
-        _uiState.value = _uiState.value.copy(
-            paymentCallbackMethod = method,
-            paymentCallbackReference = reference,
-            showPaymentCallback = true
-        )
-        // Also notify the payment middleware
-        paymentMiddleware.handlePaymentCallback(method, reference)
-    }
-
-    /**
-     * Dismiss payment callback screen.
-     */
-    fun dismissPaymentCallback() {
-        _uiState.value = _uiState.value.copy(
-            paymentCallbackMethod = null,
-            paymentCallbackReference = null,
-            showPaymentCallback = false
-        )
+        viewModelScope.launch {
+            paymentMiddleware.handlePaymentCallback(method, reference)
+        }
     }
 
     /**
@@ -341,7 +322,6 @@ class DeepLinkViewModel @Inject constructor(
                 Log.e(TAG, "❌ Failed to execute command: ${executeResult.exception.message}")
                 _uiState.value = DeepLinkUiState(
                     isExecuting = false,
-                    objectForSheet = solverObject,
                     error = "Command failed: ${executeResult.exception.message}"
                 )
                 return@launch
@@ -372,24 +352,18 @@ class DeepLinkViewModel @Inject constructor(
 
             Log.i(TAG, "Middleware processing complete. Handled: ${middlewareResult.handled}, TookOverUI: ${middlewareResult.middlewareTookOverUI}")
 
-            // 4. Show status sheet with result ONLY if no middleware took over UI
-            if (middlewareResult.middlewareTookOverUI) {
-                // Middleware (e.g., payment/subscription) is showing its own UI
-                Log.i(TAG, "Middleware took over UI - skipping status sheet")
-                _uiState.value = DeepLinkUiState(
-                    isExecuting = false,
-                    objectForSheet = solverObject,
-                    responseForSheet = response
-                )
-            } else {
-                // Show status sheet with result (same UI as ObjectDetailView)
-                _uiState.value = DeepLinkUiState(
-                    isExecuting = false,
-                    sheetVisible = true,
-                    objectForSheet = solverObject,
-                    responseForSheet = response
+            // 4. Fallback to unified result if no middleware consumed this response.
+            if (!middlewareResult.handled) {
+                actionResultCenter.publish(
+                    ActionResultPresentation.commandExecution(
+                        response = response,
+                        command = commandObj,
+                        solverObject = solverObject
+                    )
                 )
             }
+
+            _uiState.value = DeepLinkUiState(isExecuting = false)
         }
     }
 
@@ -406,17 +380,6 @@ class DeepLinkViewModel @Inject constructor(
      */
     fun dismissError() {
         _uiState.value = _uiState.value.copy(error = null)
-    }
-
-    /**
-     * Dismiss status sheet.
-     */
-    fun dismissSheet() {
-        _uiState.value = _uiState.value.copy(
-            sheetVisible = false,
-            objectForSheet = null,
-            responseForSheet = null
-        )
     }
 
     fun onBookingUrlOpened() {

@@ -10,6 +10,9 @@ import kotlinx.coroutines.test.runTest
 import no.solver.solverappdemo.MainDispatcherRule
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
+import no.solver.solverappdemo.core.config.DebugConfigurationManager
+import no.solver.solverappdemo.data.repositories.IconRepository
+import no.solver.solverappdemo.data.repositories.OfflineFirstObjectsRepository
 import no.solver.solverappdemo.features.auth.models.AuthResult
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.Session
@@ -17,6 +20,7 @@ import no.solver.solverappdemo.features.auth.models.UserInfo
 import no.solver.solverappdemo.features.auth.services.AuthCancelledException
 import no.solver.solverappdemo.features.auth.services.MicrosoftAuthService
 import no.solver.solverappdemo.features.auth.services.SessionManager
+import no.solver.solverappdemo.features.auth.services.VippsAuthService
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -31,23 +35,45 @@ class LoginViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private lateinit var microsoftAuthService: MicrosoftAuthService
+    private lateinit var vippsAuthService: VippsAuthService
     private lateinit var sessionManager: SessionManager
-    
+    private lateinit var offlineFirstRepository: OfflineFirstObjectsRepository
+    private lateinit var iconRepository: IconRepository
+    private lateinit var debugConfigurationManager: DebugConfigurationManager
+
     private val sessionFlow = MutableStateFlow<Session?>(null)
     private val environmentFlow = MutableStateFlow(AuthEnvironment.SOLVER)
+    private val debugModeFlow = MutableStateFlow(false)
 
     @Before
     fun setup() {
         microsoftAuthService = mockk(relaxed = true)
+        vippsAuthService = mockk(relaxed = true)
         sessionManager = mockk(relaxed = true)
-        
+        offlineFirstRepository = mockk(relaxed = true)
+        iconRepository = mockk(relaxed = true)
+        debugConfigurationManager = mockk(relaxed = true)
+
         every { sessionManager.currentSessionFlow } returns sessionFlow
         every { sessionManager.authEnvironmentFlow } returns environmentFlow
+        every { vippsAuthService.hasPendingAuth() } returns false
+        every { debugConfigurationManager.isDebugModeEnabledFlow } returns debugModeFlow
+    }
+
+    private fun createViewModel(): LoginViewModel {
+        return LoginViewModel(
+            microsoftAuthService = microsoftAuthService,
+            vippsAuthService = vippsAuthService,
+            sessionManager = sessionManager,
+            offlineFirstRepository = offlineFirstRepository,
+            iconRepository = iconRepository,
+            debugConfigurationManager = debugConfigurationManager
+        )
     }
 
     @Test
     fun `initial state is Idle`() = runTest {
-        val viewModel = LoginViewModel(microsoftAuthService, sessionManager)
+        val viewModel = createViewModel()
         
         assertEquals(LoginUiState.Idle, viewModel.uiState.value)
     }
@@ -55,7 +81,7 @@ class LoginViewModelTest {
     @Test
     fun `isAuthenticated is false when no session exists`() = runTest {
         sessionFlow.value = null
-        val viewModel = LoginViewModel(microsoftAuthService, sessionManager)
+        val viewModel = createViewModel()
 
         assertFalse(viewModel.isAuthenticated.value)
     }
@@ -65,7 +91,7 @@ class LoginViewModelTest {
         val session = createTestSession()
         sessionFlow.value = session
         
-        val viewModel = LoginViewModel(microsoftAuthService, sessionManager)
+        val viewModel = createViewModel()
 
         assertTrue(viewModel.isAuthenticated.value)
     }
@@ -82,7 +108,7 @@ class LoginViewModelTest {
         coEvery { microsoftAuthService.registerAndFetchUserId(any(), any(), any()) } returns "test-user-id"
         coEvery { sessionManager.createSession(any(), any(), any(), any()) } returns mockk()
 
-        val viewModel = LoginViewModel(microsoftAuthService, sessionManager)
+        val viewModel = createViewModel()
         viewModel.signInWithMicrosoft(activity)
 
         assertEquals(LoginUiState.Success, viewModel.uiState.value)
@@ -95,7 +121,7 @@ class LoginViewModelTest {
         coEvery { sessionManager.getAuthEnvironment() } returns AuthEnvironment.SOLVER
         coEvery { microsoftAuthService.signIn(any()) } throws Exception("Network error")
 
-        val viewModel = LoginViewModel(microsoftAuthService, sessionManager)
+        val viewModel = createViewModel()
         viewModel.signInWithMicrosoft(activity)
 
         val state = viewModel.uiState.value
@@ -110,7 +136,7 @@ class LoginViewModelTest {
         coEvery { sessionManager.getAuthEnvironment() } returns AuthEnvironment.SOLVER
         coEvery { microsoftAuthService.signIn(any()) } throws AuthCancelledException("User cancelled")
 
-        val viewModel = LoginViewModel(microsoftAuthService, sessionManager)
+        val viewModel = createViewModel()
         viewModel.signInWithMicrosoft(activity)
 
         assertEquals(LoginUiState.Idle, viewModel.uiState.value)
@@ -118,7 +144,7 @@ class LoginViewModelTest {
 
     @Test
     fun `clearError resets state to Idle`() = runTest {
-        val viewModel = LoginViewModel(microsoftAuthService, sessionManager)
+        val viewModel = createViewModel()
         
         viewModel.clearError()
         
@@ -127,19 +153,20 @@ class LoginViewModelTest {
 
     @Test
     fun `signOut clears session and returns to Idle`() = runTest {
-        val viewModel = LoginViewModel(microsoftAuthService, sessionManager)
+        val viewModel = createViewModel()
         
         viewModel.signOut()
         
         coVerify { microsoftAuthService.signOut() }
+        coVerify { offlineFirstRepository.clearAllCache() }
         coVerify { sessionManager.clearAllSessions() }
         assertEquals(LoginUiState.Idle, viewModel.uiState.value)
     }
 
     @Test
     fun `setAuthEnvironment updates session manager`() = runTest {
-        val viewModel = LoginViewModel(microsoftAuthService, sessionManager)
-        
+        val viewModel = createViewModel()
+
         viewModel.setAuthEnvironment(AuthEnvironment.ZOHM)
         
         coVerify { sessionManager.setAuthEnvironment(AuthEnvironment.ZOHM) }

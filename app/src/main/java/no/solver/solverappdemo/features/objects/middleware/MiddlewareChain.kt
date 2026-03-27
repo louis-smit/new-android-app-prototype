@@ -27,8 +27,7 @@ class MiddlewareChain(
             geofenceMiddleware: GeofenceMiddleware,
             danalockMiddleware: DanalockMiddleware,
             masterlockMiddleware: MasterlockMiddleware,
-            onShowStatusSheet: (ExecuteResponse) -> Unit,
-            onShowCommandFeedback: (ExecuteResponse, Command, SolverObject) -> Unit
+            onShowActionResult: (ExecuteResponse, Command, SolverObject) -> Unit
         ): MiddlewareChain {
             // Order matters: Bluetooth locks should be processed before generic handlers
             // because they intercept the command and execute via BLE instead of just logging
@@ -39,8 +38,8 @@ class MiddlewareChain(
                 subscriptionMiddleware,
                 geofenceMiddleware,
                 SetAPIStatusMiddleware(apiStatusService),
-                StatusMiddleware(onShowStatusSheet),
-                CommandFeedbackMiddleware(onShowCommandFeedback)
+                StatusMiddleware(onShowActionResult),
+                CommandFeedbackMiddleware(onShowActionResult)
             )
             return MiddlewareChain(middlewares)
         }

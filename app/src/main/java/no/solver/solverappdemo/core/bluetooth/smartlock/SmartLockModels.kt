@@ -141,7 +141,8 @@ data class SmartLockCapabilities(
 
         val MASTERLOCK = SmartLockCapabilities(
             supportsBatteryReading = false,
-            supportsRangeDetection = true,
+            // Temporary: hide range UI for Masterlock until we implement true range semantics.
+            supportsRangeDetection = false,
             supportsStatePolling = true, // Polls by periodically connecting to read state
             supportsManualStatusCheck = true, // Also supports manual status check button
             supportsLock = false,

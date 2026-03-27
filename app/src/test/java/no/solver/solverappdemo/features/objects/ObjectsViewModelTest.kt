@@ -4,15 +4,23 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import no.solver.solverappdemo.MainDispatcherRule
 import no.solver.solverappdemo.core.config.AuthEnvironment
 import no.solver.solverappdemo.core.config.AuthProvider
+import no.solver.solverappdemo.core.config.DataSimulationEvent
+import no.solver.solverappdemo.core.config.DebugConfigurationManager
+import no.solver.solverappdemo.core.network.ConnectivityObserver
 import no.solver.solverappdemo.core.network.ApiException
 import no.solver.solverappdemo.core.network.ApiResult
+import no.solver.solverappdemo.core.network.NetworkStatus
+import no.solver.solverappdemo.core.storage.FavouritesStore
+import no.solver.solverappdemo.core.cache.IconCacheManager
 import no.solver.solverappdemo.data.models.SolverObject
-import no.solver.solverappdemo.data.repositories.ObjectsRepository
+import no.solver.solverappdemo.data.repositories.ObjectsLoadResult
+import no.solver.solverappdemo.data.repositories.OfflineFirstObjectsRepository
 import no.solver.solverappdemo.features.auth.models.AuthTokens
 import no.solver.solverappdemo.features.auth.models.Session
 import no.solver.solverappdemo.features.auth.services.SessionManager
@@ -28,8 +36,17 @@ class ObjectsViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
-    private lateinit var objectsRepository: ObjectsRepository
+    private lateinit var offlineFirstRepository: OfflineFirstObjectsRepository
     private lateinit var sessionManager: SessionManager
+    private lateinit var connectivityObserver: ConnectivityObserver
+    private lateinit var favouritesStore: FavouritesStore
+    private lateinit var iconCacheManager: IconCacheManager
+    private lateinit var debugConfigManager: DebugConfigurationManager
+
+    private val sessionFlow = MutableStateFlow<Session?>(null)
+    private val networkStatusFlow = MutableStateFlow(NetworkStatus.Available)
+    private val favouritesFlow = MutableStateFlow<List<SolverObject>>(emptyList())
+    private val simulationEventsFlow = MutableSharedFlow<DataSimulationEvent>()
 
     private val testSession = Session(
         id = "test-session",
@@ -45,10 +62,51 @@ class ObjectsViewModelTest {
 
     @Before
     fun setup() {
-        objectsRepository = mockk(relaxed = true)
+        offlineFirstRepository = mockk(relaxed = true)
         sessionManager = mockk(relaxed = true)
-        every { sessionManager.currentSessionFlow } returns flowOf(testSession)
+        connectivityObserver = mockk(relaxed = true)
+        favouritesStore = mockk(relaxed = true)
+        iconCacheManager = mockk(relaxed = true)
+        debugConfigManager = mockk(relaxed = true)
+
+        sessionFlow.value = testSession
+        every { sessionManager.currentSessionFlow } returns sessionFlow
+
+        every { connectivityObserver.networkStatus } returns networkStatusFlow
+        every { connectivityObserver.isConnected() } returns true
+
+        every { favouritesStore.favourites } returns favouritesFlow
+        coEvery { favouritesStore.loadFavourites() } returns ApiResult.Success(emptyList())
+
+        every { debugConfigManager.simulationEvents } returns simulationEventsFlow
     }
+
+    private fun createViewModel(): ObjectsViewModel {
+        return ObjectsViewModel(
+            offlineFirstRepository = offlineFirstRepository,
+            sessionManager = sessionManager,
+            connectivityObserver = connectivityObserver,
+            favouritesStore = favouritesStore,
+            iconCacheManager = iconCacheManager,
+            debugConfigManager = debugConfigManager
+        )
+    }
+
+    private fun successResult(
+        objects: List<SolverObject>,
+        isFromCache: Boolean = false,
+        lastSyncedAt: Long? = 1234L
+    ) = ObjectsLoadResult.Success(
+        objects = objects,
+        isFromCache = isFromCache,
+        lastSyncedAt = lastSyncedAt
+    )
+
+    private fun errorResult(message: String) = ObjectsLoadResult.Error(
+        exception = ApiException.Network(message),
+        cachedObjects = null,
+        lastSyncedAt = null
+    )
 
     @Test
     fun `loads objects successfully and shows Success state`() = runTest {
@@ -56,9 +114,9 @@ class ObjectsViewModelTest {
             createTestObject(1, "Object A"),
             createTestObject(2, "Object B")
         )
-        coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(objects)
+        coEvery { offlineFirstRepository.loadObjects(false) } returns successResult(objects)
 
-        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
+        val viewModel = createViewModel()
 
         val state = viewModel.uiState.value
         assertTrue("Expected Success state but got $state", state is ObjectsUiState.Success)
@@ -67,20 +125,18 @@ class ObjectsViewModelTest {
 
     @Test
     fun `shows Empty state when no objects returned`() = runTest {
-        coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(emptyList())
+        coEvery { offlineFirstRepository.loadObjects(false) } returns successResult(emptyList())
 
-        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
+        val viewModel = createViewModel()
 
         assertEquals(ObjectsUiState.Empty, viewModel.uiState.value)
     }
 
     @Test
     fun `shows Error state on API failure`() = runTest {
-        coEvery { objectsRepository.getUserObjects() } returns ApiResult.Error(
-            ApiException.Network("Network error")
-        )
+        coEvery { offlineFirstRepository.loadObjects(false) } returns errorResult("Network error")
 
-        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
+        val viewModel = createViewModel()
 
         val state = viewModel.uiState.value
         assertTrue(state is ObjectsUiState.Error)
@@ -95,9 +151,9 @@ class ObjectsViewModelTest {
             createTestObject(3, "Object 3", online = true, active = false),
             createTestObject(4, "Object 4", online = true, active = true)
         )
-        coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(objects)
+        coEvery { offlineFirstRepository.loadObjects(false) } returns successResult(objects)
 
-        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
+        val viewModel = createViewModel()
 
         val stats = viewModel.statistics
         assertEquals(4, stats.total)
@@ -110,16 +166,13 @@ class ObjectsViewModelTest {
 
     @Test
     fun `retry reloads objects`() = runTest {
-        coEvery { objectsRepository.getUserObjects() } returns ApiResult.Error(
-            ApiException.Network("Error")
+        coEvery { offlineFirstRepository.loadObjects(false) } returnsMany listOf(
+            errorResult("Error"),
+            successResult(listOf(createTestObject(1, "Object")))
         )
 
-        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
+        val viewModel = createViewModel()
         assertTrue(viewModel.uiState.value is ObjectsUiState.Error)
-
-        coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(
-            listOf(createTestObject(1, "Object"))
-        )
 
         viewModel.retry()
 
@@ -128,21 +181,20 @@ class ObjectsViewModelTest {
 
     @Test
     fun `refresh updates objects`() = runTest {
-        coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(
+        coEvery { offlineFirstRepository.loadObjects(false) } returns successResult(
             listOf(createTestObject(1, "Initial"))
         )
-
-        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
-        
-        val initialState = viewModel.uiState.value as ObjectsUiState.Success
-        assertEquals(1, initialState.objects.size)
-
-        coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(
+        coEvery { offlineFirstRepository.refreshObjects() } returns successResult(
             listOf(
                 createTestObject(1, "Updated"),
                 createTestObject(2, "New Object")
             )
         )
+
+        val viewModel = createViewModel()
+
+        val initialState = viewModel.uiState.value as ObjectsUiState.Success
+        assertEquals(1, initialState.objects.size)
 
         viewModel.refreshObjects()
 
@@ -152,12 +204,12 @@ class ObjectsViewModelTest {
 
     @Test
     fun `setSearchQuery updates query state`() = runTest {
-        coEvery { objectsRepository.getUserObjects() } returns ApiResult.Success(emptyList())
+        coEvery { offlineFirstRepository.loadObjects(false) } returns successResult(emptyList())
 
-        val viewModel = ObjectsViewModel(objectsRepository, sessionManager)
-        
+        val viewModel = createViewModel()
+
         assertEquals("", viewModel.searchQuery.value)
-        
+
         viewModel.setSearchQuery("test")
         
         assertEquals("test", viewModel.searchQuery.value)

@@ -5,6 +5,10 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.browser.customtabs.CustomTabsIntent
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,12 +20,14 @@ import no.solver.solverappdemo.data.models.PaymentResponse
 import no.solver.solverappdemo.data.models.PaymentResult
 import no.solver.solverappdemo.data.models.SolverObject
 import no.solver.solverappdemo.data.models.SubscriptionOption
-import no.solver.solverappdemo.features.objects.payment.PaymentService
+import no.solver.solverappdemo.data.models.SubscriptionPaymentResponse
 import no.solver.solverappdemo.features.objects.payment.StripePaymentHandler
 import no.solver.solverappdemo.features.objects.payment.SubscriptionService
 import no.solver.solverappdemo.features.objects.payment.SubscriptionStorage
-import javax.inject.Inject
-import javax.inject.Singleton
+import no.solver.solverappdemo.features.objects.result.ActionResultCenter
+import no.solver.solverappdemo.features.objects.result.ActionResultKind
+import no.solver.solverappdemo.features.objects.result.ActionResultPresentation
+import no.solver.solverappdemo.features.objects.result.ActionResultState
 
 /**
  * Context for a subscription flow.
@@ -39,7 +45,7 @@ data class SubscriptionContext(
 
     private fun indefiniteArticle(word: String): String {
         val vowels = listOf("a", "e", "i", "o", "u")
-        val firstLetter = word.lowercase().take(1)
+        val firstLetter = word.lowercase(Locale.getDefault()).take(1)
         return if (firstLetter in vowels) "an $word" else "a $word"
     }
 }
@@ -51,9 +57,9 @@ data class SubscriptionContext(
 @Singleton
 class SubscriptionMiddleware @Inject constructor(
     private val subscriptionService: SubscriptionService,
-    private val paymentService: PaymentService,
     private val subscriptionStorage: SubscriptionStorage,
-    private val stripePaymentHandler: StripePaymentHandler
+    private val stripePaymentHandler: StripePaymentHandler,
+    private val actionResultCenter: ActionResultCenter
 ) : CommandMiddleware {
 
     companion object {
@@ -82,18 +88,9 @@ class SubscriptionMiddleware @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    // Alert state
-    private val _showSuccessAlert = MutableStateFlow(false)
-    val showSuccessAlert: StateFlow<Boolean> = _showSuccessAlert.asStateFlow()
-
-    private val _showErrorAlert = MutableStateFlow(false)
-    val showErrorAlert: StateFlow<Boolean> = _showErrorAlert.asStateFlow()
-
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
-
-    // Keep track of current object for payment method filtering
-    private var currentObject: SolverObject? = null
+    // Prevent duplicate payment initiation when users tap repeatedly.
+    private val isPaymentSelectionInFlight = AtomicBoolean(false)
+    private var pendingStripeResponse: SubscriptionPaymentResponse? = null
 
     override fun matches(response: ExecuteResponse, command: Command): Boolean {
         return !response.success && response.hasContextKey("subscriptionRequired")
@@ -110,50 +107,47 @@ class SubscriptionMiddleware @Inject constructor(
 
         Log.i(TAG, "🟣 [SubscriptionMiddleware] TRIGGERED for command: ${command.commandName}")
 
-        // Fetch subscription options
         val result = subscriptionService.fetchSubscriptionOptions(solverObject.id)
 
         return result.fold(
             onSuccess = { options ->
                 if (options.isEmpty()) {
                     Log.e(TAG, "No subscription options available for object ${solverObject.id}")
-                    return MiddlewareResult.Handled(
+                    MiddlewareResult.Handled(
                         message = "Subscription required but no options available",
                         suppressDebugUI = false
                     )
+                } else {
+                    Log.i(TAG, "Fetched ${options.size} subscription options")
+
+                    val methods = AvailablePaymentMethods.from(solverObject.vippsCredentials)
+                    if (methods.none) {
+                        Log.e(TAG, "No payment methods available for object ${solverObject.id}")
+                        MiddlewareResult.Handled(
+                            message = "Subscription required but no payment methods configured",
+                            suppressDebugUI = false
+                        )
+                    } else {
+                        val context = SubscriptionContext(
+                            command = command.commandName,
+                            objectId = solverObject.id,
+                            subscriptionOptions = options
+                        )
+
+                        _subscriptionContext.value = context
+                        _selectedSubscription.value = null
+                        _availableMethods.value = methods
+                        resetInFlightState()
+                        _showSubscriptionOptionsSheet.value = true
+
+                        Log.i(TAG, "Showing subscription options sheet")
+
+                        MiddlewareResult.Handled(
+                            message = "Subscription flow initiated",
+                            suppressDebugUI = true
+                        )
+                    }
                 }
-
-                Log.i(TAG, "Fetched ${options.size} subscription options")
-
-                // Get available payment methods
-                val methods = AvailablePaymentMethods.from(solverObject.vippsCredentials)
-
-                if (methods.none) {
-                    Log.e(TAG, "No payment methods available for object ${solverObject.id}")
-                    return MiddlewareResult.Handled(
-                        message = "Subscription required but no payment methods configured",
-                        suppressDebugUI = false
-                    )
-                }
-
-                // Create context and show UI
-                val context = SubscriptionContext(
-                    command = command.commandName,
-                    objectId = solverObject.id,
-                    subscriptionOptions = options
-                )
-
-                currentObject = solverObject
-                _subscriptionContext.value = context
-                _availableMethods.value = methods
-                _showSubscriptionOptionsSheet.value = true
-
-                Log.i(TAG, "Showing subscription options sheet")
-
-                MiddlewareResult.Handled(
-                    message = "Subscription flow initiated",
-                    suppressDebugUI = true
-                )
             },
             onFailure = { error ->
                 Log.e(TAG, "Failed to fetch subscription options: ${error.message}")
@@ -173,19 +167,18 @@ class SubscriptionMiddleware @Inject constructor(
 
         _showSubscriptionOptionsSheet.value = false
         _selectedSubscription.value = option
+        resetInFlightState()
 
-        // Filter payment methods based on subscription type
-        // Recurring subscriptions (type 3) only support Vipps
+        // Recurring subscriptions (type 3) only support Vipps.
         val currentMethods = _availableMethods.value
         if (option.subscriptionType?.isRecurring == true && currentMethods != null) {
             _availableMethods.value = AvailablePaymentMethods(
                 hasVipps = currentMethods.hasVipps,
-                hasCard = false,  // Card not supported for recurring
-                hasStripe = false  // Stripe not supported for recurring
+                hasCard = false,
+                hasStripe = false
             )
         }
 
-        // Show payment method selection
         _showPaymentMethodSheet.value = true
     }
 
@@ -193,12 +186,19 @@ class SubscriptionMiddleware @Inject constructor(
      * Handle payment method selection for subscription.
      */
     suspend fun handlePaymentMethodSelected(method: PaymentMethod, context: Context) {
+        if (!isPaymentSelectionInFlight.compareAndSet(false, true)) {
+            Log.w(TAG, "Ignoring duplicate subscription payment selection while request is in flight")
+            return
+        }
+
         val subscription = _selectedSubscription.value ?: run {
             Log.e(TAG, "Missing subscription when payment method selected")
+            resetInFlightState()
             return
         }
         val subscriptionContext = _subscriptionContext.value ?: run {
             Log.e(TAG, "Missing context when payment method selected")
+            resetInFlightState()
             return
         }
 
@@ -212,36 +212,40 @@ class SubscriptionMiddleware @Inject constructor(
         )
 
         result.onSuccess { paymentResponse ->
-            // Save pending subscription for recovery
+            // Save pending subscription for recovery.
             subscriptionStorage.savePendingSubscription(
                 method = method,
                 subscriptionOption = subscription,
                 objectId = subscriptionContext.objectId
             )
 
-            // Handle payment based on method
             handleSubscriptionPaymentResponse(method, paymentResponse, subscription, context)
         }.onFailure { error ->
             Log.e(TAG, "Subscription payment initiation failed: ${error.message}")
-            _isLoading.value = false
-            _showPaymentMethodSheet.value = false
-            showError(error.message ?: "Subscription initiation failed")
+            clearPaymentSelectionState()
+            publishSubscriptionOutcome(
+                state = ActionResultState.FAILURE,
+                message = error.message ?: "Subscription initiation failed"
+            )
+            resetInFlightState()
         }
     }
 
     private fun handleSubscriptionPaymentResponse(
         method: PaymentMethod,
-        response: no.solver.solverappdemo.data.models.SubscriptionPaymentResponse,
+        response: SubscriptionPaymentResponse,
         subscriptionOption: SubscriptionOption,
         context: Context
     ) {
         when (method) {
             PaymentMethod.STRIPE -> {
-                // For Stripe, keep payment sheet open while Stripe presents on top
-                handleStripeSubscriptionPayment(response)
+                // Dismiss selector first, then present Stripe from sheet dismissal callback.
+                pendingStripeResponse = response
+                _showPaymentMethodSheet.value = false
             }
-            PaymentMethod.VIPPS, PaymentMethod.CARD -> {
-                // For external payments, dismiss immediately before redirecting
+
+            PaymentMethod.VIPPS,
+            PaymentMethod.CARD -> {
                 _showPaymentMethodSheet.value = false
                 _isLoading.value = false
                 handleExternalSubscriptionPayment(method, response, subscriptionOption, context)
@@ -249,13 +253,24 @@ class SubscriptionMiddleware @Inject constructor(
         }
     }
 
-    private fun handleStripeSubscriptionPayment(
-        response: no.solver.solverappdemo.data.models.SubscriptionPaymentResponse
-    ) {
+    /**
+     * Called after the payment method sheet is dismissed.
+     * If Stripe is pending we defer SDK presentation until the sheet is fully gone.
+     */
+    fun handlePaymentMethodSheetDismissed() {
+        val stripeResponse = pendingStripeResponse ?: run {
+            resetInFlightState()
+            return
+        }
+
+        pendingStripeResponse = null
+        handleStripeSubscriptionPayment(stripeResponse)
+    }
+
+    private fun handleStripeSubscriptionPayment(response: SubscriptionPaymentResponse) {
         Log.i(TAG, "Handling Stripe subscription payment...")
         _isLoading.value = false
 
-        // Convert to PaymentResponse format for StripePaymentHandler
         val stripeResponse = PaymentResponse(
             orderId = response.orderId,
             url = response.url,
@@ -265,31 +280,43 @@ class SubscriptionMiddleware @Inject constructor(
         )
 
         stripePaymentHandler.presentPaymentSheet(stripeResponse) { result ->
-            // Dismiss payment method sheet now that Stripe is done
-            _showPaymentMethodSheet.value = false
-
             when (result) {
                 is PaymentResult.Success -> {
                     Log.i(TAG, "✅ Stripe subscription payment successful")
                     subscriptionStorage.clearPendingSubscription()
-                    showSuccess()
+                    publishSubscriptionOutcome(
+                        state = ActionResultState.SUCCESS,
+                        message = "Your subscription payment was successful."
+                    )
                 }
+
                 is PaymentResult.Failure -> {
                     Log.e(TAG, "❌ Stripe subscription payment failed: ${result.message}")
                     subscriptionStorage.clearPendingSubscription()
-                    showError(result.message)
+                    publishSubscriptionOutcome(
+                        state = ActionResultState.FAILURE,
+                        message = result.message
+                    )
                 }
+
                 is PaymentResult.Cancelled -> {
                     Log.i(TAG, "Stripe subscription payment cancelled")
                     subscriptionStorage.clearPendingSubscription()
+                    publishSubscriptionOutcome(
+                        state = ActionResultState.CANCELLED,
+                        message = "Subscription payment was cancelled."
+                    )
                 }
             }
+
+            clearPaymentSelectionState()
+            resetInFlightState()
         }
     }
 
     private fun handleExternalSubscriptionPayment(
         method: PaymentMethod,
-        response: no.solver.solverappdemo.data.models.SubscriptionPaymentResponse,
+        response: SubscriptionPaymentResponse,
         subscriptionOption: SubscriptionOption,
         context: Context
     ) {
@@ -298,14 +325,26 @@ class SubscriptionMiddleware @Inject constructor(
         val subscriptionType = subscriptionOption.subscriptionType
         if (subscriptionType == null) {
             Log.e(TAG, "Unknown subscription type")
-            showError("Unknown subscription type")
+            subscriptionStorage.clearPendingSubscription()
+            publishSubscriptionOutcome(
+                state = ActionResultState.FAILURE,
+                message = "Unknown subscription type"
+            )
+            clearPaymentSelectionState()
+            resetInFlightState()
             return
         }
 
         val urlString = response.getRedirectUrl(subscriptionType)
         if (urlString == null) {
             Log.e(TAG, "No redirect URL in subscription payment response")
-            showError("No redirect URL provided")
+            subscriptionStorage.clearPendingSubscription()
+            publishSubscriptionOutcome(
+                state = ActionResultState.FAILURE,
+                message = "No redirect URL provided"
+            )
+            clearPaymentSelectionState()
+            resetInFlightState()
             return
         }
 
@@ -316,14 +355,23 @@ class SubscriptionMiddleware @Inject constructor(
             Log.i(TAG, "Opening external subscription payment URL: $urlString")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open payment URL: ${e.message}")
-            try {
+            val openedInBrowser = runCatching {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(urlString))
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
-            } catch (e: Exception) {
-                showError("Could not open payment page")
+            }.isSuccess
+
+            if (!openedInBrowser) {
+                subscriptionStorage.clearPendingSubscription()
+                publishSubscriptionOutcome(
+                    state = ActionResultState.FAILURE,
+                    message = "Could not open payment page"
+                )
             }
         }
+
+        clearPaymentSelectionState()
+        resetInFlightState()
     }
 
     /**
@@ -341,67 +389,84 @@ class SubscriptionMiddleware @Inject constructor(
 
             if (options.isEmpty()) {
                 Log.e(TAG, "No subscription options available for object ${solverObject.id}")
-                showError("No subscription options available")
-                return
+                publishSubscriptionOutcome(
+                    state = ActionResultState.FAILURE,
+                    message = "No subscription options available."
+                )
+                return@onSuccess
             }
 
             Log.i(TAG, "Fetched ${options.size} subscription options")
 
-            // Get available payment methods
             val methods = AvailablePaymentMethods.from(solverObject.vippsCredentials)
-
             if (methods.none) {
                 Log.e(TAG, "No payment methods available for object ${solverObject.id}")
-                showError("No payment methods configured")
-                return
+                publishSubscriptionOutcome(
+                    state = ActionResultState.FAILURE,
+                    message = "No payment methods are configured for this object."
+                )
+                return@onSuccess
             }
 
-            // Create context and show UI
             val context = SubscriptionContext(
-                command = "subscription",  // Generic command for explicit flow
+                command = "subscription",
                 objectId = solverObject.id,
                 subscriptionOptions = options
             )
 
-            currentObject = solverObject
             _subscriptionContext.value = context
+            _selectedSubscription.value = null
             _availableMethods.value = methods
+            resetInFlightState()
             _showSubscriptionOptionsSheet.value = true
 
             Log.i(TAG, "Showing subscription options sheet (explicit flow)")
         }.onFailure { error ->
             _isLoading.value = false
             Log.e(TAG, "Failed to fetch subscription options: ${error.message}")
-            showError("Failed to fetch subscription options")
+            publishSubscriptionOutcome(
+                state = ActionResultState.FAILURE,
+                message = "Failed to fetch subscription options."
+            )
         }
     }
 
     fun dismissSubscriptionOptionsSheet() {
         _showSubscriptionOptionsSheet.value = false
         _subscriptionContext.value = null
-        currentObject = null
     }
 
     fun dismissPaymentMethodSheet() {
+        clearPaymentSelectionState()
+        resetInFlightState()
+    }
+
+    private fun clearPaymentSelectionState() {
         _showPaymentMethodSheet.value = false
         _selectedSubscription.value = null
     }
 
-    fun dismissSuccessAlert() {
-        _showSuccessAlert.value = false
+    private fun resetInFlightState() {
+        _isLoading.value = false
+        pendingStripeResponse = null
+        isPaymentSelectionInFlight.set(false)
     }
 
-    fun dismissErrorAlert() {
-        _showErrorAlert.value = false
-        _errorMessage.value = null
-    }
+    private fun publishSubscriptionOutcome(state: ActionResultState, message: String) {
+        val title = when (state) {
+            ActionResultState.SUCCESS -> "Subscription Succeeded"
+            ActionResultState.FAILURE -> "Subscription Failed"
+            ActionResultState.CANCELLED -> "Subscription Cancelled"
+            ActionResultState.PROCESSING -> "Subscription Processing"
+        }
 
-    private fun showSuccess() {
-        _showSuccessAlert.value = true
-    }
-
-    private fun showError(message: String) {
-        _errorMessage.value = message
-        _showErrorAlert.value = true
+        actionResultCenter.publish(
+            ActionResultPresentation(
+                kind = ActionResultKind.SUBSCRIPTION,
+                state = state,
+                title = title,
+                message = message
+            )
+        )
     }
 }

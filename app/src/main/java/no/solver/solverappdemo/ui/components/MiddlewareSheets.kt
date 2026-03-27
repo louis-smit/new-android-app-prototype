@@ -325,6 +325,7 @@ fun SubscriptionPaymentMethodSheetContent(
     onSelectMethod: (PaymentMethod) -> Unit,
     onDismiss: () -> Unit,
     isLoading: Boolean = false,
+    allowDismiss: Boolean = !isLoading,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -386,7 +387,7 @@ fun SubscriptionPaymentMethodSheetContent(
         TextButton(
             onClick = onDismiss,
             modifier = Modifier.fillMaxWidth(),
-            enabled = !isLoading
+            enabled = allowDismiss
         ) {
             Text("Cancel")
         }

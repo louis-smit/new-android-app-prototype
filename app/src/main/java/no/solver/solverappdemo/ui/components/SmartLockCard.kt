@@ -55,6 +55,7 @@ fun SmartLockCard(
     modifier: Modifier = Modifier
 ) {
     val isAnyExecuting = operation != CachedOperation.NONE
+    val areCommandButtonsEnabled = !isAnyExecuting && lockStatus.hasValidTokens
     var showDebugButtons by remember { mutableStateOf(false) }
     var debugTapCount by remember { mutableIntStateOf(0) }
 
@@ -207,7 +208,7 @@ fun SmartLockCard(
                 if (capabilities.supportsUnlock) {
                     Button(
                         onClick = onUnlock,
-                        enabled = !isAnyExecuting,
+                        enabled = areCommandButtonsEnabled,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF4CAF50) // Green
                         ),
@@ -236,7 +237,7 @@ fun SmartLockCard(
                 if (capabilities.supportsLock) {
                     Button(
                         onClick = onLock,
-                        enabled = !isAnyExecuting,
+                        enabled = areCommandButtonsEnabled,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFFF44336) // Red
                         ),
